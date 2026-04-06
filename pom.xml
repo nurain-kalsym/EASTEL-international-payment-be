@@ -10,9 +10,9 @@
     </parent>
 
     <groupId>com.kalsym</groupId>
-    <artifactId>ekedai</artifactId>
+    <artifactId>internationalPayment</artifactId>
     <version>2.5.2</version>
-    <name>ekedai</name>
+    <name>International Payment</name>
     <properties>
         <java.version>21</java.version>
     </properties>
