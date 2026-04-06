@@ -1,22 +1,15 @@
 package com.kalsym.internationalPayment.controller;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.kalsym.internationalPayment.InternationalPaymentApplication;
 import com.kalsym.internationalPayment.model.*;
 import com.kalsym.internationalPayment.model.dao.*;
 import com.kalsym.internationalPayment.model.enums.ImageType;
-import com.kalsym.internationalPayment.model.enums.TransactionEnum;
 import com.kalsym.internationalPayment.model.enums.UserStatus;
 import com.kalsym.internationalPayment.repositories.UserRepository;
 import com.kalsym.internationalPayment.services.*;
 import com.kalsym.internationalPayment.utility.*;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -24,6 +17,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -33,7 +27,6 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -66,56 +59,16 @@ public class UserController {
     private PasswordEncoder passwordEncoder;
 
     @Autowired
-    private ProfileService profileService;
-
-    @Autowired
-    private UserDocumentService userDocumentService;
-
-    @Autowired
     private ImageAssetService imageAssetService;
 
-    @Autowired
-    private UserMergeService userMergeService;
+    
+    /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * Register/Login/Token related endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
 
-    @Autowired
-    private CampaignService campaignService;
-
-    @Autowired
-    private DiscountUserService discountUserService;
-
-    @Autowired
-    private SymplifiedOrderService symplifiedOrderService;
-
-    @Autowired
-    private PaymentController paymentController;
-
-    // Default channel name
-    @Value("${channel.name:e-kedai}")
-    private String channelName;
-
-    @PostMapping(path = "/test-campaign")
-    public ResponseEntity<HttpResponse> testUserCampaign(HttpServletRequest request,
-            String phoneNumber) {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logPrefix = "testUserCampaign";
-
-        String msisdn = MsisdnUtil.formatMsisdn(phoneNumber);
-        Optional<User> userOpt = userRepository.findByPhoneNumber(msisdn);
-
-        if (userOpt.isPresent()) {
-            User user = userOpt.get();
-
-            // Handle active campaign and issue reward
-            handleActiveCampaignAndReward(user, logPrefix, request);
-            response.setStatus(HttpStatus.OK);
-        } else {
-            response.setStatus(HttpStatus.NOT_FOUND);
-        }
-        return ResponseEntity.status(response.getStatus()).body(response);
-
-    }
-
-    @PostMapping(path = "/register")
+    @PostMapping(path = "/register") //✅
     public ResponseEntity<HttpResponse> registerUser(
             HttpServletRequest request,
             @RequestBody User userBody) {
@@ -145,44 +98,6 @@ public class UserController {
 
                 User body = userService.userRegistration(userBody);
 
-                // Handle active campaign and issue reward
-                handleActiveCampaignAndReward(body, logprefix, request);
-
-                // Create user document
-                if (body.getNationality() != null) {
-                    try {
-                        UserDocumentRequest userDocumentRequest = new UserDocumentRequest();
-                        userDocumentRequest.setUserId(body.getId());
-                        userDocumentRequest
-                                .setDocumentType(!body.getNationality().equals("Malaysian") ? "PASSPORT" : "MYKAD");
-                        userDocumentRequest.setDocumentNumber(userBody.getDocumentNo());
-                        userDocumentRequest.setStatus(UserDocument.UserDocumentStatus.PENDING_UPLOAD);
-
-                        // Create user document
-                        userDocumentService.createUserDocument(userDocumentRequest);
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "User document created");
-
-                    } catch (Exception e) {
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "User document creation error: " + e.getMessage());
-                    }
-                }
-
-                // Register to mongodb user profile
-                try {
-                    ProfileServiceResponse profileServiceResponse = profileService.createUser(
-                            body.getPhoneNumber(),
-                            body.getFullName(), body.getEmail(), body.getReferral(), body.getNationality(), false,
-                            null);
-                    Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                            "Customer profile service: ",
-                            profileServiceResponse.getMessage());
-                } catch (Exception e) {
-                    Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                            "Customer profile service error: " + e.getMessage());
-                }
-
                 response.setData(body);
                 response.setStatus(HttpStatus.OK);
 
@@ -210,23 +125,22 @@ public class UserController {
 
             }
         } else {
-
             response.setStatus(HttpStatus.EXPECTATION_FAILED, "Invalid payload");
-
         }
 
         return ResponseEntity.status(response.getStatus()).body(response);
 
     }
 
-    @PostMapping("/signin")
+    @PostMapping("/sign-in") //✅
     public ResponseEntity<?> authenticateUser(
             HttpServletRequest request,
             @RequestBody LoginRequest loginRequest) {
 
-        String logprefix = "signin";
+        String logprefix = "sign-in";
         MySQLUserDetails userDetails = null;
-        Optional<User> optUser = Optional.empty(); // Initialize the Optional as empty
+        Optional<User> optUser = Optional.empty(); 
+
         String msisdn = loginRequest.getPhoneNumber();
         if (loginRequest.getEmail() == null) {
             msisdn = MsisdnUtil.formatMsisdn(msisdn);
@@ -275,56 +189,13 @@ public class UserController {
                 .body(jwtBody);
     }
 
-    @PostMapping("/signout")
+    @PostMapping("/sign-out") //✅
     public ResponseEntity<?> logoutUser() {
         return ResponseEntity.ok()
                 .body("You've been signed out!");
     }
 
-    @GetMapping(path = { "/userDetails" })
-    public ResponseEntity<HttpResponse> getUserById(
-            HttpServletRequest request) {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "userDetails";
-        try {
-
-            User user = userService.getUser(request.getHeader(HEADER_STRING));
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "User Id: ",
-                    user.getId());
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION,
-                    DateTimeUtil.currentTimestampToString() + " @GetMapping getUserById",
-                    "path: " + user.getId());
-
-            User data = userService.userById(user.getId());
-
-            List<String> documentTypes = Arrays.asList("PASSPORT", "MYKAD");
-            // List<String> documentTypes = Collections.singletonList("PASSPORT");
-            // Get user documents for this user
-            List<UserDocument> userDocuments = userDocumentService
-                    .getUserDocumentsByUserIdAndDocumentTypes(user.getId(), documentTypes);
-
-            String userDocumentStatus = "N/A";
-            if (!userDocuments.isEmpty()) {
-                userDocumentStatus = userDocuments.get(0).getStatus().toString();
-            }
-            data.setDocumentStatus(userDocumentStatus);
-
-            response.setStatus(HttpStatus.OK);
-            response.setData(data);
-
-        } catch (Exception e) {
-            response.setStatus(HttpStatus.UNAUTHORIZED, "Unauthorized user",
-                    Integer.toString(HttpStatus.UNAUTHORIZED.value()));
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-
-    }
-
-    @PostMapping("/refresh")
+    @PostMapping("/refresh") //✅
     public ResponseEntity<?> refreshToken(HttpServletRequest request,
             @RequestBody JwtBody jwt) {
         HttpResponse response = new HttpResponse(request.getRequestURI());
@@ -357,11 +228,10 @@ public class UserController {
                 .body(jwtBody);
     }
 
-    // //authentication
-    @PostMapping(path = "/loginoauth")
+    @PostMapping(path = "/login-oauth") //❓
     public ResponseEntity<?> loginOauth(@RequestBody ValidateOauthRequest body,
             HttpServletRequest request) throws Exception {
-        String logprefix = "loginOauth";
+        String logprefix = "login-oauth";
         String userEmail = "";
 
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "body : ", body);
@@ -374,7 +244,6 @@ public class UserController {
             User userData = new User();
             userData.setEmail(userEmail);
             userData.setFullName(body.getName());
-            userData.setChannel(body.getLoginType());
 
             User saveData = userService.userSocialLoginRegistration(userData);
 
@@ -399,7 +268,44 @@ public class UserController {
                 .body(jwtBody);
     }
 
-    @PutMapping(path = { "/{id}/changepassword" })
+    
+    /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * User related endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
+
+    @GetMapping(path = { "/user-details" }) //✅
+    public ResponseEntity<HttpResponse> getUserById(
+            HttpServletRequest request) {
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logprefix = "getUserById";
+        try {
+
+            User user = userService.getUser(request.getHeader(HEADER_STRING));
+            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "User Id: ",
+                    user.getId());
+            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION,
+                    DateTimeUtil.currentTimestampToString() + " @GetMapping getUserById",
+                    "path: " + user.getId());
+
+            User data = userService.userById(user.getId());
+            response.setStatus(HttpStatus.OK);
+            response.setData(data);
+
+        } catch (Exception e) {
+            response.setStatus(HttpStatus.UNAUTHORIZED, "Unauthorized user",
+                    Integer.toString(HttpStatus.UNAUTHORIZED.value()));
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Exception " + e.getMessage());
+
+        }
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+
+    }
+
+    @PutMapping(path = { "/{id}/change-password" }) //✅
     public ResponseEntity<HttpResponse> changePassword(HttpServletRequest request,
             @PathVariable String id,
             @RequestBody ChangePasswordRequest reqBody) {
@@ -416,19 +322,23 @@ public class UserController {
             return ResponseEntity.status(response.getStatus()).body(response);
         }
         User userData = userOpt.get();
-        // checking first the new and confirm new password is correct
-        if (!reqBody.getNewPassword().equals(reqBody.getConfirmNewPassword())) {
 
-            response.setStatus(HttpStatus.EXPECTATION_FAILED, "Confirm new password not same",
+        // checking password reset qualification
+        if (!reqBody.getNewPassword().equals(reqBody.getConfirmNewPassword())) {
+            response.setStatus(HttpStatus.EXPECTATION_FAILED, "The password confirmation do not match.",
                     Integer.toString(HttpStatus.EXPECTATION_FAILED.value()));
             Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Confirm password not same with password");
+                    "The password confirmation do not match.");
             return ResponseEntity.status(response.getStatus()).body(response);
+        }
 
+        if (passwordEncoder.matches(reqBody.getNewPassword(), userData.getPassword())) {
+            response.setStatus(HttpStatus.BAD_REQUEST,
+                    "New password cannot be the same as old password.");
+            return ResponseEntity.status(response.getStatus()).body(response);
         }
 
         try {
-
             // verify current password
             authenticationManager
                     .authenticate(
@@ -454,7 +364,7 @@ public class UserController {
             userData.setPassword(reqBody.getNewPassword());
             User saveData = userService.userProfileResetPassword(userData);
             response.setData(saveData);
-            response.setStatus(HttpStatus.OK, "Success Change Password");
+            response.setStatus(HttpStatus.OK, "Password change is successful.");
 
             Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                     "User id : " + id + " password changed");
@@ -473,15 +383,13 @@ public class UserController {
 
     }
 
-    @PutMapping(path = { "/resetpassword" })
-    public ResponseEntity<HttpResponse> changePassword(HttpServletRequest request,
+    @PutMapping(path = { "/reset-password" }) // first-time login password reset //✅
+    public ResponseEntity<HttpResponse> resetPassword(HttpServletRequest request,
             @RequestBody ChangePasswordRequest changePasswordRequest) {
-        String logprefix = "resetpassword";
+        String logprefix = "resetPassword";
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
-
         String msisdn = MsisdnUtil.formatMsisdn(changePasswordRequest.getMsisdn());
-
         Optional<User> userOpt = userService.findUserByPhoneNumber(msisdn);
 
         if (!userOpt.isPresent()) {
@@ -493,16 +401,30 @@ public class UserController {
         }
 
         User userData = userOpt.get();
-        // checking first the new and confirm new password is correct
-        if (!changePasswordRequest.getNewPassword().equals(changePasswordRequest.getConfirmNewPassword())) {
+
+        // check if already first time login
+        if (userData.getIsFirstTimeLogin()) {
             response.setStatus(HttpStatus.EXPECTATION_FAILED,
-                    "The password confirmation do not match");
+                    "Account has already reset their password for first time login.");
+            return ResponseEntity.status(response.getStatus()).body(response);
+        }
+        
+        // checking password reset qualification
+        if (!passwordEncoder.matches(changePasswordRequest.getCurrentPassword(), userData.getPassword())) {
+            response.setStatus(HttpStatus.BAD_REQUEST,
+                    "Old Password is incorrect.");
+            return ResponseEntity.status(response.getStatus()).body(response);
+        }
+
+        if (!changePasswordRequest.getNewPassword().equals(changePasswordRequest.getConfirmNewPassword())) {
+            response.setStatus(HttpStatus.BAD_REQUEST,
+                    "The password confirmation do not match.");
             return ResponseEntity.status(response.getStatus()).body(response);
         }
 
         if (passwordEncoder.matches(changePasswordRequest.getNewPassword(), userData.getPassword())) {
-            response.setStatus(HttpStatus.EXPECTATION_FAILED,
-                    "New password cannot be the same as old password");
+            response.setStatus(HttpStatus.BAD_REQUEST,
+                    "New password cannot be the same as old password.");
             return ResponseEntity.status(response.getStatus()).body(response);
         }
 
@@ -510,12 +432,12 @@ public class UserController {
         userData.setPassword(changePasswordRequest.getNewPassword());
         User saveData = userService.userProfileResetPassword(userData);
         response.setData(saveData);
-        response.setStatus(HttpStatus.OK, "Success Change Password");
+        response.setStatus(HttpStatus.OK, "Password reset is successful.");
 
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @PutMapping(path = { "/{id}/change-user-profile" })
+    @PutMapping(path = { "/{id}/change-user-profile" }) //✅
     public ResponseEntity<HttpResponse> changeUserProfile(HttpServletRequest request,
             @RequestHeader("Authorization") String authHeader,
             @PathVariable String id,
@@ -556,9 +478,6 @@ public class UserController {
                 }
                 if (reqBody.getPhoneNumber() != null) {
                     userData.setPhoneNumber(reqBody.getPhoneNumber());
-                }
-                if (reqBody.getChannel() != null) {
-                    userData.setChannel(reqBody.getChannel());
                 }
                 if (reqBody.getFullName() != null) {
                     userData.setFullName(reqBody.getFullName());
@@ -609,7 +528,7 @@ public class UserController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @PutMapping(path = { "/{id}/change-user-status" })
+    @PutMapping(path = { "/{id}/change-user-status" }) //✅
     public ResponseEntity<HttpResponse> changeUserStatus(HttpServletRequest request,
             @PathVariable String id,
             @RequestParam(required = true) UserStatus status) {
@@ -691,12 +610,12 @@ public class UserController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @PutMapping(path = { "/{id}/change-language-profile" })
+    @PutMapping(path = { "/{id}/change-language-profile" }) //✅
     public ResponseEntity<HttpResponse> changeLanguageProfile(HttpServletRequest request,
             @PathVariable String id,
             @RequestBody ChangeNationality reqBody) {
         HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "changeLanguageProfile()";
+        String logprefix = "changeLanguageProfile";
 
         Optional<User> userOpt = userService.optionalUserById(id);
         if (!userOpt.isPresent()) {
@@ -744,37 +663,145 @@ public class UserController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @PostMapping("/requestOTP")
-    public ResponseEntity<HttpResponse> sendRequest(HttpServletRequest request,
+    @GetMapping("/get-users") //✅
+    public ResponseEntity<HttpResponse> getUsers(HttpServletRequest request,
+            @RequestParam(defaultValue = "created", required = false) String sortBy,
+            @RequestParam(defaultValue = "ASC", required = false) String sortingOrder,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) UserStatus status,
+            @RequestParam(required = false) String globalSearch,
+            @RequestParam(required = false) List<String> roles,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date from,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date to) {
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logprefix = "getUsers";
+        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "Requested");
+
+        Sort sort = Sort.by(sortingOrder.equalsIgnoreCase("DESC") ? Sort.Direction.DESC : Sort.Direction.ASC,
+                sortBy);
+        Pageable pageable = PageRequest.of(page, pageSize, sort);
+
+        Page<User> users = userRepository
+                .findAll(userService.getUsersSpec(from, to, status, globalSearch, roles), pageable);
+        response.setStatus(HttpStatus.OK);
+        response.setData(users);
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    @PostMapping(path = "/{userId}/profile-picture", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) //✅
+     public ResponseEntity<HttpResponse> postProfilePicture(
+                HttpServletRequest request,
+                @PathVariable("userId") String userId,
+                @RequestPart(value = "file", required = true) MultipartFile file
+     ) throws Exception {
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logPrefix = "postProfilePicture";
+
+        // Return error if no file provided
+        if (file == null) {
+            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                    "No file provided");
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            response.setMessage("No file provided");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        // Log the filename and userId
+        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                "userId: " + userId + ", filename: " + file.getOriginalFilename());
+                
+        Optional<User> optionalUser = userRepository.findById(userId);
+
+        // Return if no user found
+        if (!optionalUser.isPresent()) {
+            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                    "User not found");
+            response.setStatus(HttpStatus.NOT_FOUND);
+            response.setMessage("User not found");
+
+            return ResponseEntity.status(response.getStatus()).body(response);
+        }
+
+        try {
+            // Save the image
+            ImageAssets data = imageAssetService.saveImageAsset(file, ImageType.profile);
+
+            User user = optionalUser.get();
+            // Check if image id is not null
+            if (user.getImageId() != null) {
+                // Delete image
+                String deleteStatus = imageAssetService.deleteImageById(user.getImageId());
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                        "Delete image: " + deleteStatus);
+            }
+            // Set image id
+            user.setImageId(data.getId());
+            // Save the user
+            user = userRepository.save(user);
+            // Set image details explicitly
+            user.setImageDetails(data);
+
+            response.setStatus(HttpStatus.OK);
+            response.setData(user);
+        } catch (IOException e) {
+            // Handle exceptions
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            response.setMessage(e.getMessage());
+
+            // Log the exception message
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                    "Exception " + e.getMessage());
+        }
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+
+    /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * OTP related endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
+
+    @PostMapping("/request-otp") //❓
+    public ResponseEntity<HttpResponse> sendOtpRequest(HttpServletRequest request,
             @RequestBody RequestBodyData requestBodyData) {
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
-        String channel = "e-kedai".equalsIgnoreCase(channelName) ? "eByzarr" : channelName;
-        String message = channel + ": OTP: ";
-        String logPrefix = "sendRequestOTP";
+        String message = "OTP: ";
+        String logPrefix = "sendOtpRequest";
 
         try {
 
-            String msisdn = MsisdnUtil.formatMsisdn(requestBodyData.getDestAddr());
-
-            Optional<User> optUser = userService.findUserByPhoneNumber(msisdn);
-
-            if (!optUser.isPresent()) {
-                response.setStatus(HttpStatus.NOT_FOUND,
-                        "Number Not Found : "
-                                + msisdn);
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                        "Number Not Found : "
-                                + msisdn);
-
-                return ResponseEntity.status(response.getStatus()).body(response);
+            if (requestBodyData.getDestAddr() != null) {
+                String msisdn = MsisdnUtil.formatMsisdn(requestBodyData.getDestAddr());
+                Optional<User> optUser = userService.findUserByPhoneNumber(msisdn);
+    
+                if (!optUser.isPresent()) {
+                    response.setStatus(HttpStatus.NOT_FOUND,
+                            "Number Not Found : "
+                                    + msisdn);
+                    Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                            "Number Not Found : "
+                                    + msisdn);
+    
+                    return ResponseEntity.status(response.getStatus()).body(response);
+                }
+    
+                //temp comment
+                //smsService.sendHttpGetRequest(msisdn, message, true);
+                response.setData("SUCCESS");
+                response.setStatus(HttpStatus.OK);
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix, "OTP SENT For : ",
+                        msisdn);
+            } else {
+                // send OTP to email
             }
 
-            smsService.sendHttpGetRequest(msisdn, message, true);
-            response.setData("SUCCESS");
-            response.setStatus(HttpStatus.OK);
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix, "OTP SENT For : ",
-                    msisdn);
 
         } catch (Exception e) {
             response.setStatus(HttpStatus.EXPECTATION_FAILED, e.getMessage());
@@ -786,14 +813,13 @@ public class UserController {
 
     }
 
-    @PostMapping("/requestRegistrationOTP")
-    public ResponseEntity<HttpResponse> sendRegistrationOTPRequest(HttpServletRequest request,
+    @PostMapping("/request-registration-otp") //❓
+    public ResponseEntity<HttpResponse> sendRegistrationOtpRequest(HttpServletRequest request,
             @RequestBody RequestBodyData requestBodyData) {
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
-        String channel = "e-kedai".equalsIgnoreCase(channelName) ? "eByzarr" : channelName;
-        String message = channel + ": OTP: ";
-        String logPrefix = "sendRegistrationOTPRequest";
+        String message = "OTP: ";
+        String logPrefix = "sendRegistrationOtpRequest";
 
         try {
 
@@ -843,7 +869,7 @@ public class UserController {
 
     }
 
-    @PostMapping("/confirmVerificationCode")
+    @PostMapping("/confirm-verification-code") //❓
     public ResponseEntity<?> confirmVerificationCode(HttpServletRequest request,
             @RequestBody() OTPRequest OTPRequestBody) {
         String logPrefix = "confirmVerificationCode";
@@ -886,430 +912,4 @@ public class UserController {
 
     }
 
-    @PostMapping(path = "/getAppUserToken")
-    public ResponseEntity<?> getAppUserToken(
-            HttpServletRequest request,
-            @RequestHeader("X-App-Token") String appToken,
-            @RequestBody(required = false) String extraData) {
-        String logprefix = "getAppUserToken";
-
-        // Get the claims from the appToken
-        CentralAuthTokenDetails centralAuthTokenDetails = jwtUtils.parseAppToken(appToken);
-
-        String appId = centralAuthTokenDetails.getAppId();
-        String phoneNumber = centralAuthTokenDetails.getPhoneNumber();
-
-        // If the claims is null, disallow the request
-        if (phoneNumber == null || appId == null || !appId.equalsIgnoreCase(channelName)) {
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body("Unauthorized: Access is denied due to invalid appToken provided");
-        }
-
-        phoneNumber = MsisdnUtil.formatMsisdn(phoneNumber);
-
-        Optional<User> optionalUser = userRepository.findByPhoneNumber(phoneNumber);
-        User user;
-        boolean isNewUser = false;
-
-        // Extra data from Hellosim
-        // const extraData = {
-        // name: user.fullName,
-        // email: user.email,
-        // nationality: user.nationality,
-        // gender: user.gender,
-        // channel: "HELLOSIM"
-        // };
-
-        // Extract extra data fields if available
-        ExtraData extraDataFields = extractExtraData(extraData);
-
-        // If email is not provided, set to default email
-        if (extraDataFields.getEmail() == null) {
-            extraDataFields.setEmail(String.format("%s@%s.com", phoneNumber, channelName));
-        }
-
-        // If channel is not provided, set to default channel
-        if (extraDataFields.getChannel() == null) {
-            extraDataFields.setChannel(channelName.toUpperCase());
-        }
-
-        // If name is not provided, set to default name
-        if (extraDataFields.getName() == null) {
-            extraDataFields.setName(String.format("User%s%s", phoneNumber, channelName));
-        }
-
-        // Create new account
-        if (!optionalUser.isPresent() && extraDataFields.getChannel() != null && extraDataFields.getEmail() != null) {
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Creating user with phone no: ",
-                    phoneNumber);
-
-            User newUser = new User();
-            newUser.setPhoneNumber(phoneNumber);
-            newUser.setChannel(extraDataFields.getChannel());
-            newUser.setIsEnable(true);
-            newUser.setRole("CUSTOMER");
-            newUser.setEmail(extraDataFields.getEmail());
-            newUser.setFullName(extraDataFields.getName());
-            newUser.setStatus(UserStatus.ACTIVE);
-            if (extraDataFields.getNationality() != null) {
-                newUser.setNationality(extraDataFields.getNationality());
-            }
-            user = userRepository.save(newUser);
-
-            // Handle active campaign and issue reward
-            handleActiveCampaignAndReward(user, logprefix, request);
-
-            // Set isNewUser true
-            isNewUser = true;
-
-            // Register to customer profile service
-            try {
-                ProfileServiceResponse profileServiceResponse = profileService.createUser(
-                        user.getPhoneNumber(),
-                        user.getFullName(), user.getEmail(), null, extraDataFields.getNationality(),
-                        true, extraDataFields.getDob());
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Customer profile service - create: ",
-                        profileServiceResponse.getMessage());
-            } catch (Exception e) {
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Customer profile service Create Error: " + e.getMessage());
-            }
-
-        } else {
-            // User exists
-            user = optionalUser.get();
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Found user with phone no: ",
-                    phoneNumber);
-
-            // Set Inactive user to unauthorized
-            if (user.getStatus().equals(UserStatus.INACTIVE)) {
-                Map<String, Object> tokenData = new HashMap<>();
-                tokenData.put("jwt", null);
-                tokenData.put("isNewUser", isNewUser);
-                tokenData.put("isAuthorized", false);
-
-                return ResponseEntity.ok()
-                        .body(tokenData);
-            }
-
-            // Check if need to update
-            boolean doUpdate = false;
-
-            if (extraDataFields.getName() != null && !user.getFullName().equals(extraDataFields.getName())) {
-                user.setFullName(extraDataFields.getName());
-                doUpdate = true;
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Update user " + phoneNumber + " with new name: ", extraDataFields.getName());
-            }
-            if (extraDataFields.getEmail() != null && !user.getEmail().equals(extraDataFields.getEmail())) {
-                user.setEmail(extraDataFields.getEmail());
-                doUpdate = true;
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Update user " + phoneNumber + " with new email: ", extraDataFields.getEmail());
-            }
-            // Update user if flag is true
-            if (doUpdate) {
-                try {
-                    // Update db
-                    user = userRepository.save(user);
-                } catch (Exception e) {
-                    Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                            "Error updating user: " + e.getMessage());
-                }
-
-                // Update customer profile service
-                try {
-                    ProfileServiceResponse profileServiceResponse = profileService.updateUser(
-                            user.getPhoneNumber(),
-                            user.getFullName(), user.getEmail(), user.getNationality(), extraDataFields.getGender(),
-                            extraDataFields.getDob());
-                    Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                            "Customer profile service - update: ",
-                            profileServiceResponse.getMessage());
-                } catch (Exception e) {
-                    Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                            "Customer profile service Update Error: " + e.getMessage());
-                }
-            }
-
-        }
-
-        // Add device token to nestjs profile service
-//        if (extraDataFields.getDeviceToken() != null) {
-//            try {
-//                ProfileServiceResponse profileServiceResponse = profileService.postUserDeviceToken(
-//                        user.getPhoneNumber(),
-//                        extraDataFields.getDeviceToken());
-//                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-//                        "Customer profile service - add device token: ",
-//                        profileServiceResponse.getMessage());
-//            } catch (Exception e) {
-//                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-//                        "Customer profile service add device token Error: " + e.getMessage());
-//            }
-//        }
-
-        Authentication authentication = authenticationManager
-                .authenticate(new UsernamePasswordAuthenticationToken(user.getPhoneNumber(), null));
-
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-
-        String jwtToken = jwtUtils.getJwtTokenFromPhoneNumber(user.getPhoneNumber(), user.getId());
-
-        Map<String, Object> tokenData = new HashMap<>();
-        tokenData.put("jwt", jwtToken);
-        tokenData.put("isNewUser", isNewUser);
-        tokenData.put("isAuthorized", true);
-
-        return ResponseEntity.ok()
-                .header("Authorization", "Bearer " + jwtToken)
-                .body(tokenData);
-    }
-
-    private ExtraData extractExtraData(String extraData) {
-        if (extraData == null) {
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, "getAppUserToken", "No extra data");
-            return new ExtraData();
-        }
-
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode extraDataNode = mapper.readTree(extraData);
-            return new ExtraData(extraDataNode);
-        } catch (Exception e) {
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, "getAppUserToken",
-                    "Extra data parsing error: " + e.getMessage());
-            return new ExtraData();
-        }
-    }
-
-    @GetMapping("/getUsers")
-    public ResponseEntity<HttpResponse> getUsers(HttpServletRequest request,
-            @RequestParam(defaultValue = "created", required = false) String sortBy,
-            @RequestParam(defaultValue = "ASC", required = false) String sortingOrder,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) UserStatus status,
-            @RequestParam(required = false) String globalSearch,
-            @RequestParam(required = false) List<String> roles,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date from,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date to) {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "getUsers";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Requested");
-
-        Sort sort = Sort.by(sortingOrder.equalsIgnoreCase("DESC") ? Sort.Direction.DESC : Sort.Direction.ASC,
-                sortBy);
-        Pageable pageable = PageRequest.of(page, pageSize, sort);
-
-        Page<User> users = userRepository
-                .findAll(userService.getUsersSpec(from, to, status, globalSearch, roles), pageable);
-        response.setStatus(HttpStatus.OK);
-        response.setData(users);
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @PostMapping(path = { "/{userId}/profile-picture" })
-    public ResponseEntity<HttpResponse> postProfilePicture(
-            HttpServletRequest request,
-            @PathVariable("userId") String userId,
-            @RequestParam(value = "file", required = false) MultipartFile file)
-            throws Exception {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logPrefix = "postProfilePicture";
-
-        // Return error if no file provided
-        if (file == null) {
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                    "No file provided");
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setMessage("No file provided");
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
-        }
-
-        // Log the filename and userId
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                "userId: " + userId + ", filename: " + file.getOriginalFilename());
-
-        Optional<User> optionalUser = userRepository.findById(userId);
-
-        // Return if no user found
-        if (!optionalUser.isPresent()) {
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                    "User not found");
-            response.setStatus(HttpStatus.NOT_FOUND);
-            response.setMessage("User not found");
-
-            return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
-        try {
-            // Save the image
-            ImageAssets data = imageAssetService.saveImageAsset(file, ImageType.profile);
-
-            User user = optionalUser.get();
-            // Check if image id is not null
-            if (user.getImageId() != null) {
-                // Delete image
-                String deleteStatus = imageAssetService.deleteImageById(user.getImageId());
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                        "Delete image: " + deleteStatus);
-            }
-            // Set image id
-            user.setImageId(data.getId());
-            // Save the user
-            user = userRepository.save(user);
-            // Set image details explicitly
-            user.setImageDetails(data);
-
-            response.setStatus(HttpStatus.OK);
-            response.setData(user);
-        } catch (IOException e) {
-            // Handle exceptions
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setMessage(e.getMessage());
-
-            // Log the exception message
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                    "Exception " + e.getMessage());
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @PostMapping("/merge-account")
-    public ResponseEntity<HttpResponse> mergeUserAccount(HttpServletRequest request,
-            @RequestBody UserMergeRequest requestBody) {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        UserMerge mergeRecord;
-        try {
-            // Normalize phone number
-            String oldPhoneNumber = MsisdnUtil.formatMsisdn(requestBody.getOldPhoneNumber());
-
-            mergeRecord = userMergeService.initiateMerge(requestBody.getNewUserId(), oldPhoneNumber,
-                    requestBody.getMergeReason());
-            response.setStatus(HttpStatus.OK);
-            response.setData(mergeRecord);
-        } catch (RuntimeException e) {
-            response.setStatus(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    private void handleActiveCampaignAndReward(User user, String logPrefix, HttpServletRequest request) {
-        // Check for campaign
-        Optional<Campaign> activeCampaign = campaignService.findAndValidateUserCriteria(user, logPrefix);
-        if (activeCampaign.isPresent()) {
-            // Handle the user as it meets the campaign criteria
-            Campaign campaign = activeCampaign.get();
-
-            switch (campaign.getRewardType()) {
-                case DISCOUNT_CODE:
-                    // Give discount code if applicable
-                    DiscountUserRequest discountUserRequest = new DiscountUserRequest();
-                    discountUserRequest.setDiscountCode(campaign.getRewardValue());
-                    discountUserRequest.setUserPhoneNumber(user.getPhoneNumber());
-
-                    // Claim discount process
-                    HttpResponse claimDiscountResponse = discountUserService.claimDiscount(request, discountUserRequest,
-                            logPrefix, null);
-
-                    if (claimDiscountResponse.getStatus() == 200) {
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Reward " + campaign.getRewardValue() + " issued to " + user.getPhoneNumber());
-                    } else {
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Error in issuing reward to " + user.getPhoneNumber() + ": "
-                                        + claimDiscountResponse.getMessage());
-                    }
-                    break;
-
-                case EXTERNAL_VOUCHER_CODE:
-                    try {
-                        // 1. Make placeFreeCouponGroupOrder HTTP request
-                        HttpResponse httpResponse = symplifiedOrderService.claimFreeCoupon(
-                                user.getPhoneNumber(),
-                                campaign.getRewardValue());
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Symplified order service - claim free coupon response: " + httpResponse.getStatus()
-                                        + " - " + httpResponse.getMessage());
-
-                        // If response data is not null
-                        if (httpResponse.getData() != null) {
-                            ObjectMapper objectMapper = new ObjectMapper();
-                            objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false); // Ensures
-                                                                                                              // unknown
-                                                                                                              // fields
-                                                                                                              // are
-                                                                                                              // ignored
-                            SymplifiedOrderGroupResponse symplifiedOrderGroupResponse = objectMapper
-                                    .convertValue(httpResponse.getData(), SymplifiedOrderGroupResponse.class);
-                            PaymentController.Payment payment = new PaymentController.Payment();
-                            SymplifiedOrderDTO symplifiedOrderDTO = new SymplifiedOrderDTO();
-                            if (!symplifiedOrderGroupResponse.getOrderList().isEmpty()) {
-                                symplifiedOrderDTO = symplifiedOrderGroupResponse.getOrderList().get(0);
-                            }
-
-                            payment.setName(user.getFullName());
-                            payment.setEmail(user.getEmail());
-                            payment.setPhoneNo(user.getPhoneNumber());
-                            payment.setProductVariantId(1525); // Coupon with variantType FREECOUPON
-                            payment.setTransactionAmount(0.0);
-                            payment.setUserId(user.getId());
-                            payment.setPaymentMethod("FREECOUPON");
-                            payment.setSpInvoiceId(symplifiedOrderDTO.getInvoiceId());
-                            payment.setSpOrderId(symplifiedOrderGroupResponse.getId());
-                            payment.setPaymentEnum(TransactionEnum.COUPON);
-                            payment.setExtra1("COUPON");
-                            payment.setRedeemCoins(false);
-
-                            // 2. Create transaction
-                            HttpResponse httpResponseTransaction = paymentController.createTransaction(request, payment)
-                                    .getBody();
-
-                            assert httpResponseTransaction != null;
-                            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                    "Create transaction response: " + httpResponseTransaction.getStatus()
-                                            + " - " + httpResponseTransaction.getMessage());
-
-                        } else {
-                            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                    "placeFreeCouponGroupOrder HTTP request returns null");
-                        }
-
-                    } catch (HttpStatusCodeException e) {
-                        // Register the custom deserializer for Date
-                        Gson gson = new GsonBuilder()
-                                .registerTypeAdapter(Date.class, new CustomTimestampDeserializer())
-                                .create();
-                        HttpResponse requestResponse = gson.fromJson(e.getResponseBodyAsString(), HttpResponse.class);
-
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Symplified order service - claim free coupon error: " + requestResponse.getMessage(),
-                                e.getResponseBodyAsString());
-                    } catch (Exception e) {
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Symplified order service - claim free coupon Exception: " + e.getMessage(), e);
-                    }
-                    break;
-
-                default:
-                    // Log if an unsupported value is found in the campaign rewardType
-                    Logger.application.warn(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                            "Unsupported campaign rewardType: " + campaign.getRewardType());
-                    break;
-            }
-
-        } else {
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                    "No active campaign");
-        }
-    }
 }

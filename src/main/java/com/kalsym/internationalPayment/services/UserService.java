@@ -50,7 +50,7 @@ public class UserService {
         String password = bcryptEncoder.encode(user.getPassword());
         user.setPassword(password);
         user.setIsEnable(true);// always set to true
-        user.setChannel(user.getChannel());
+        user.setIsFirstTimeLogin(false); //always set to false
         user.setStatus(UserStatus.ACTIVE);
         user.setNationality(user.getNationality());
 
@@ -78,13 +78,13 @@ public class UserService {
         user.setPhoneNumber(msisdn);
 
         if (user.getEmail() == null || user.getEmail().isEmpty()) {
-            user.setEmail(msisdn + "@ebyzarr.com");
+            user.setEmail(msisdn + "@eastel.com");
         }
 
         if (user.getRole() != null && user.getRole().equalsIgnoreCase("admin")) {
             user.setRole("ADMIN");
         } else {
-            user.setRole("CUSTOMER");
+            user.setRole("DEALER");
         }
 
         Date date = new Date();
@@ -108,6 +108,7 @@ public class UserService {
 
         String pin = bcryptEncoder.encode(user.getPassword());
         user.setPassword(pin);
+        user.setIsFirstTimeLogin(true);
         user.setUpdated(now);
 
         return userRepository.save(user);
@@ -115,10 +116,8 @@ public class UserService {
 
     public User userSocialLoginRegistration(User user) {
 
-        user.setIsEnable(true);// set to false first , after success verification code then we can set it to
-                               // true
-
-        user.setRole("CUSTOMER");
+        user.setIsEnable(true);// set to false first , after success verification code then we can set it to true
+        user.setRole("DEALER");
         user.setStatus(UserStatus.ACTIVE);
 
         return userRepository.save(user);

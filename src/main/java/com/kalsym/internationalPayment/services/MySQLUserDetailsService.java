@@ -26,7 +26,7 @@ public class MySQLUserDetailsService implements UserDetailsService {
     @Transactional
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
 
-        System.out.println("username1111"+username);
+        System.out.println("username: "+username);
         
         User user = userRepository.findByEmail(username).orElseGet(() -> {
             // This block will be executed if the user is not found by email
@@ -38,8 +38,7 @@ public class MySQLUserDetailsService implements UserDetailsService {
             return userByPhoneNumber;
         });
 
-                System.out.println("user1111"+user);
-
+        System.out.println("user: "+user);
 
         return MySQLUserDetails.build(user);
     }

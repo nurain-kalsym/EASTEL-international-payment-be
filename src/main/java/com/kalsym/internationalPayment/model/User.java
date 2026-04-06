@@ -11,7 +11,6 @@ import lombok.ToString;
 import org.hibernate.annotations.*;
 
 import jakarta.persistence.*;
-import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import java.util.Date;
 
@@ -36,9 +35,6 @@ public class User {
     private String phoneNumber;
 
     @Column(nullable = false)
-    private String channel;
-
-    @Column(nullable = false)
     private String fullName;
 
     private String password;
@@ -46,6 +42,8 @@ public class User {
     private String nationality;
 
     private Boolean isEnable;
+
+    private Boolean isFirstTimeLogin; 
 
     @Column(nullable = false)
     private String role;
@@ -63,16 +61,7 @@ public class User {
     @Enumerated(EnumType.STRING)
     private UserStatus status;
 
-    @Transient
-    private String referral;
-
     private String language;
-
-    @Transient
-    private String documentStatus;
-
-    @Transient
-    private String documentNo;
 
     private String imageId;
 
@@ -80,8 +69,4 @@ public class User {
     @JoinColumn(name = "imageId", referencedColumnName = "id", insertable = false, updatable = false)
     @NotFound(action = NotFoundAction.IGNORE)
     private ImageAssets imageDetails;
-
-    @Transient
-    private String mergeStatus;
-
 }

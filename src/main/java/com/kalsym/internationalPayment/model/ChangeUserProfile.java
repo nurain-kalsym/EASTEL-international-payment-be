@@ -15,8 +15,6 @@ public class ChangeUserProfile {
 
 	private String fullName;
 
-	private String channel;
-
 	private String nationality;
 
 }
