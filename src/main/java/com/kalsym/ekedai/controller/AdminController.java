@@ -121,6 +121,9 @@ public class AdminController {
         String logprefix = "getAllUser";
         Logger.application.info(Logger.pattern, EkedaiApplication.VERSION, logprefix,
                 "Requested");
+
+        System.out.println("test");
+        
         try {
 
             User users = new User();
