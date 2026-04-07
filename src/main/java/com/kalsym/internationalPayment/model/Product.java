@@ -70,8 +70,6 @@ public class Product implements Serializable {
     @Enumerated(EnumType.STRING)
     private ExtraStep extraStep;
 
-    // private String wspProductCodeBillPrepaid;
-
     @OneToOne()
     @JoinColumn(name = "categoryId", referencedColumnName = "id", insertable = false, updatable = false)
     @NotFound(action = NotFoundAction.IGNORE)
@@ -99,8 +97,6 @@ public class Product implements Serializable {
 
     @Enumerated(EnumType.STRING)
     private VariantType productType;
-
-    private String serviceId;
 
     public static Product castReference(ProductRequest req) {
 

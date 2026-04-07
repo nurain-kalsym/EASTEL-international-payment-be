@@ -11,8 +11,6 @@ import com.kalsym.internationalPayment.model.ProductCategory;
 import com.kalsym.internationalPayment.model.ProductVariant;
 import com.kalsym.internationalPayment.model.categoryTree.TreeNode;
 import com.kalsym.internationalPayment.model.dao.ProductDto;
-import com.kalsym.internationalPayment.model.dao.ProductServiceIdRequest;
-import com.kalsym.internationalPayment.model.dao.ServiceIdWithProductsResponse;
 import com.kalsym.internationalPayment.model.enums.Status;
 import com.kalsym.internationalPayment.model.enums.VariantType;
 import com.kalsym.internationalPayment.repositories.CountryRepository;
@@ -443,56 +441,5 @@ public class ProductService {
 
             return categoryNode;
         }).collect(Collectors.toList());
-    }
-
-    @Transactional
-    public void updateServiceIdInBatch(List<ProductServiceIdRequest> requestBody) {
-        Set<Integer> requestProductIds = requestBody.stream()
-                .map(ProductServiceIdRequest::getProductId)
-                .collect(Collectors.toSet());
-
-        List<Product> productsWithServiceId = productRepository.findByServiceIdIsNotNull();
-
-        // Set serviceId to null for products not in the request list
-        productsWithServiceId.stream()
-                .filter(product -> !requestProductIds.contains(product.getId()))
-                .forEach(product -> {
-                    product.setServiceId(null);
-                    productRepository.save(product);
-                });
-
-        // Update serviceId for products in the request list
-        for (ProductServiceIdRequest request : requestBody) {
-            Product product = productRepository.findById(request.getProductId())
-                    .orElseThrow(() -> new RuntimeException("Product not found with ID: " + request.getProductId()));
-            product.setServiceId(request.getServiceId());
-            productRepository.save(product);
-        }
-    }
-
-    public List<ServiceIdWithProductsResponse> getServiceIdsWithProducts() {
-        List<Object[]> results = productRepository.findServiceIdsWithProducts();
-        Map<String, List<ProductDto>> serviceIdMap = new HashMap<>();
-
-        for (Object[] result : results) {
-            String serviceId = (String) result[0];
-            Integer productId = (Integer) result[1];
-            String productName = (String) result[2];
-
-            ProductDto productDto = new ProductDto();
-            productDto.setId(productId);
-            productDto.setName(productName);
-
-            serviceIdMap.computeIfAbsent(serviceId, k -> new ArrayList<>()).add(productDto);
-        }
-
-        return serviceIdMap.entrySet().stream()
-                .map(entry -> {
-                    ServiceIdWithProductsResponse response = new ServiceIdWithProductsResponse();
-                    response.setServiceId(entry.getKey());
-                    response.setProducts(entry.getValue());
-                    return response;
-                })
-                .collect(Collectors.toList());
     }
 }
