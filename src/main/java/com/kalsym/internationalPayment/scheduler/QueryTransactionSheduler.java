@@ -42,7 +42,7 @@ public class QueryTransactionSheduler {
     @Autowired
     SmsService smsService;
 
-    @Value("${sms.brand:eByzarr}")
+    @Value("${sms.brand:eastel}")
     private String smsBrand;
 
     @Scheduled(cron = "${pending-transaction:0 0/1 * * * ?}")

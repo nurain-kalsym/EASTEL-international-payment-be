@@ -38,6 +38,8 @@ public class ImageAssetsController {
     @Autowired
     ImageAssetService imageAssetService;
 
+    
+    @Operation(summary = "Get image by ID", description = "To retrieve image by ID")
     @GetMapping(path = { "/image/{id}" })
     public ResponseEntity<?> getImageById(HttpServletRequest request, @PathVariable String id,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {

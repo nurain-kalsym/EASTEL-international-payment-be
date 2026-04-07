@@ -23,13 +23,14 @@ import com.kalsym.internationalPayment.utility.GeneratePdfUtils;
 import com.kalsym.internationalPayment.utility.HttpResponse;
 import com.kalsym.internationalPayment.utility.Logger;
 
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.ByteArrayInputStream;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("dashboard")
+@RequestMapping("/dashboard")
 public class DashboardController {
 
     @Autowired
@@ -41,7 +42,8 @@ public class DashboardController {
     @Autowired
     private CountryRepository countryRepository;
 
-    @GetMapping("/transactionCounts")
+    @Operation(summary = "Get transactions counts by date range", description = "To retrieve details of transactions counts within the date range")
+    @GetMapping("/transactions/counts")
     public ResponseEntity<HttpResponse> getTransactionCounts(HttpServletRequest request,
             @RequestParam() @DateTimeFormat(pattern = "yyyy-MM-dd") Date from,
             @RequestParam() @DateTimeFormat(pattern = "yyyy-MM-dd") Date to) {
@@ -96,7 +98,8 @@ public class DashboardController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @GetMapping("/userCounts")
+    @Operation(summary = "Get users counts by date range", description = "To retrieve details of users registered within the date range")
+    @GetMapping("/users/counts")
     public ResponseEntity<HttpResponse> getUserCounts(HttpServletRequest request,
             @RequestParam() @DateTimeFormat(pattern = "yyyy-MM-dd") Date from,
             @RequestParam() @DateTimeFormat(pattern = "yyyy-MM-dd") Date to) {
@@ -123,8 +126,8 @@ public class DashboardController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @GetMapping(path = {
-            "/download-transaction-receipt/{transactionId}" }, name = "transaction-get-pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    @Operation(summary = "Download transaction receipt", description = "To download transaction receipt")
+    @GetMapping(path = {"/download/transaction-receipt/{transactionId}" }, name = "transaction-get-pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<InputStreamResource> downloadTransactionReceipt(HttpServletRequest request,
             @PathVariable String transactionId) {
 
@@ -168,7 +171,8 @@ public class DashboardController {
 
     }
 
-    @GetMapping("/transactionCountsByUser")
+    @Operation(summary = "Get transaction counts by spefic user", description = "To retrieve counts of transctions by user ID")
+    @GetMapping("/transactions/counts-by-user")
     public ResponseEntity<HttpResponse> getTransactionCountsByUser(HttpServletRequest request,
                                                                    @RequestParam() String userId) {
 
@@ -184,18 +188,6 @@ public class DashboardController {
         }
 
         try {
-
-//            List<Transaction> transactions = transactionRepository.findByUserIdAndProductIdIsNotNullAndProductVariantIdIsNotNull(userId);
-//
-//            // Group transactions by status and count occurrences
-//            Map<String, Long> statusCounts = transactions.stream()
-//                    .collect(Collectors.groupingBy(Transaction::getStatus, Collectors.counting()));
-//
-//            // Convert the Map to a List of StatusCount
-//            List<StatusCount> statusCountList = statusCounts.entrySet().stream()
-//                    .map(entry -> new StatusCount(entry.getKey(), entry.getValue()))
-//                    .collect(Collectors.toList());
-
             List<Object[]> queryResults = transactionRepository.getTransactionCountsByUser(userId);
 
             List<StatusCount> statusCountList = queryResults.stream()

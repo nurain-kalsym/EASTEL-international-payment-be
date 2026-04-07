@@ -30,11 +30,6 @@ public interface ProductRepository extends JpaRepository<Product, Integer>, JpaS
 
     List<Product> getProductsByCategoryIdAndCountryCode(Integer id, String countryCode);
 
-    @Query("SELECT p.serviceId, p.id, p.productName FROM Product p WHERE p.serviceId IS NOT NULL")
-    List<Object[]> findServiceIdsWithProducts();
-
-    List<Product> findByServiceIdIsNotNull();
-
     // Custom query to get categories by countryCode and active status
     @Query("SELECT DISTINCT pv.category FROM Product p JOIN p.productVariant pv WHERE p.countryCode = :countryCode AND p.status = :status AND pv.category IS NOT NULL")
     List<String> findDistinctCategoriesByCountryCodeAndStatus(@Param("countryCode") String countryCode,

@@ -23,18 +23,21 @@ public class MySQLUserDetails implements UserDetails {
 
   private Boolean isEnable;
 
+  private String role;
+
   @JsonIgnore
   private String password;
 
   private Collection<? extends GrantedAuthority> authorities;
 
-  public MySQLUserDetails(String id, String email, String password, Boolean isEnable,
+  public MySQLUserDetails(String id, String email, String password, Boolean isEnable, String role,
       Collection<? extends GrantedAuthority> authorities) {
     this.id = id;
     this.username = email;
     this.email = email;
     this.password = password;
     this.isEnable = isEnable;
+    this.role = role;
     this.authorities = authorities;
   }
 
@@ -48,6 +51,7 @@ public class MySQLUserDetails implements UserDetails {
         user.getEmail(),
         user.getPassword(),
         user.getIsEnable(),
+        user.getRole(),
         grantedAuthorities);
   }
 
@@ -76,6 +80,10 @@ public class MySQLUserDetails implements UserDetails {
   @Override
   public String getUsername() {
     return username;
+  }
+
+  public String getRole() {
+    return role;
   }
 
   @Override

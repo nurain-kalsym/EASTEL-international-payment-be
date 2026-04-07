@@ -25,6 +25,7 @@ import com.kalsym.internationalPayment.model.enums.VariantType;
 import com.kalsym.internationalPayment.repositories.*;
 import com.kalsym.internationalPayment.services.*;
 import com.kalsym.internationalPayment.utility.HttpResponse;
+import com.kalsym.internationalPayment.utility.JwtUtils;
 import com.kalsym.internationalPayment.utility.Logger;
 
 import jakarta.persistence.criteria.Join;
@@ -35,13 +36,12 @@ import static com.kalsym.internationalPayment.filter.SessionRequestFilter.HEADER
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/admin")
+@RequestMapping("/admins")
 public class AdminController {
 
     @Autowired
@@ -68,10 +68,10 @@ public class AdminController {
     @Autowired
     CSVService csvService;
 
-    @Value("${image.assets.location:eByzarr}")
+    @Value("${image.assets.location:eastel}")
     private String imageAssetPath;
 
-    @Value("${sms.brand:eByzarr}")
+    @Value("${sms.brand:eastel}")
     private String smsBrand;
 
     @Autowired
@@ -104,8 +104,19 @@ public class AdminController {
     @Autowired
     EmailService emailService;
 
-    @Operation(summary = "Get all users", description = "Only admin can view all the users")
-    @GetMapping("/getAllUser")
+    @Autowired
+    AdminService adminService;
+
+
+     /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * User related endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
+
+
+    @Operation(summary = "Get all users", description = "To retrieve all user with pagination/filter")
+    @GetMapping("/users/pagination")
     public ResponseEntity<HttpResponse> getAllUser(HttpServletRequest request,
             @RequestParam(defaultValue = "created", required = false) String sortBy,
             @RequestParam(defaultValue = "ASC", required = false) String sortingOrder,
@@ -115,10 +126,15 @@ public class AdminController {
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "getAllUser";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "Requested");
-
-        System.out.println("test");
 
         try {
 
@@ -169,8 +185,15 @@ public class AdminController {
         };
     }
 
-    @Operation(summary = "Add new image", description = "Admin can create save image in file server")
-    @PostMapping(path = { "/image-asset" })
+
+     /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * Asset related endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
+
+    @Operation(summary = "Add new image", description = "To create save image in file server")
+    @PostMapping(path = { "/assets/create" })
     public ResponseEntity<HttpResponse> postAssetImage(
             HttpServletRequest request,
             @RequestParam() ImageType imageType,
@@ -179,6 +202,13 @@ public class AdminController {
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "postAssetImage";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+        
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "filename : " + file.getOriginalFilename());
         try {
@@ -197,8 +227,8 @@ public class AdminController {
 
     }
 
-    @Operation(summary = "Get assets image list", description = "Only admin can request this endpoint for get all the images.")
-    @GetMapping(path = { "/image-asset-list" })
+    @Operation(summary = "Get assets image list", description = "To retrieve all the images with pagination.")
+    @GetMapping(path = { "/assets/pagination" })
     public ResponseEntity<HttpResponse> getImageList(
             HttpServletRequest request,
             @RequestParam(defaultValue = "0") int page,
@@ -207,6 +237,13 @@ public class AdminController {
             @RequestParam(required = false, defaultValue = "ASC") Sort.Direction sortingOrder) {
         HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "getImageList";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "imagelist Requested");
         try {
@@ -226,14 +263,21 @@ public class AdminController {
 
     }
 
-    @Operation(summary = "Bulk delete image", description = "Note: Please include the id you want to delete, Refer the request body in order to send the request. Only admin can request this endpoint.")
-    @PostMapping(path = { "/bulk/delete-image" })
+    @Operation(summary = "Bulk delete image", description = "To delete images in bulk with provided image IDs")
+    @PostMapping(path = { "/assets/delete/bulk" })
     public ResponseEntity<HttpResponse> bulkDeleteImage(
             HttpServletRequest request,
             @RequestBody List<String> imageId) {
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "bulkDeleteImage";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "imageId : " + imageId.toString());
         try {
@@ -253,8 +297,107 @@ public class AdminController {
 
     }
 
-    @Operation(summary = "Create new product", description = "Admin can create the product.")
-    @PostMapping(path = { "/product" })
+    @Operation(summary = "Upload banners in bulk by section", description = "To upload images for banner by section in bulk")
+    @PostMapping("/assets/banner/bulk/{section}")
+    public ResponseEntity<HttpResponse> createOrUpdateBulkBanners(HttpServletRequest request,
+            @PathVariable String section,
+            @RequestBody List<Banner> banners) {
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logprefix = "postBulkBanners";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
+        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "Request body " + banners);
+        try {
+            Date now = new Date();
+
+            // Delete all existing banners by section
+            bannerRepository.deleteBySection(section.toLowerCase());
+
+            // Create new banners
+            List<Banner> createdBanners = new ArrayList<>();
+            for (Banner banner : banners) {
+                banner.setName(banner.getName());
+                banner.setImageId(banner.getImageId());
+                banner.setUrl(banner.getUrl());
+                banner.setSection(section.toLowerCase());
+                banner.setCreatedAt(now);
+                banner.setUpdatedAt(now);
+                Banner createdBanner = bannerRepository.save(banner);
+
+                // Fetch associated image details
+                ImageAssets imageOptional = imageAssetsRepository.findById(banner.getImageId()).orElse(null);
+                createdBanner.setImageDetails(imageOptional);
+
+                createdBanners.add(createdBanner);
+            }
+
+            response.setStatus(HttpStatus.OK);
+            response.setData(createdBanners);
+            response.setMessage("Created banners: " + createdBanners.size());
+        } catch (Exception e) {
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            response.setMessage("Error creating banners: " + e.getMessage());
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Exception " + e.getMessage());
+        }
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    @Operation(summary = "Delete image by filename", description = "To delete image by filename")
+    @DeleteMapping("/assets/delete/{fileName}")
+    public ResponseEntity<HttpResponse> deleteImageById(HttpServletRequest request,
+            @PathVariable String fileName) {
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logprefix = "deleteImageById";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
+        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "fileName " + fileName);
+        Optional<ImageAssets> optionalImageAssets = imageAssetsRepository.findByFileName(fileName);
+
+        // Return if not found
+        if (!optionalImageAssets.isPresent()) {
+            response.setStatus(HttpStatus.NOT_FOUND, "Image id not found");
+            return ResponseEntity.status(response.getStatus()).body(response);
+        }
+
+        try {
+            ImageAssets imageAssets = optionalImageAssets.get();
+
+            imageAssetService.deleteImageFile(fileName, imageAssets.getImageType());
+
+            response.setStatus(HttpStatus.OK);
+            response.setData(fileName);
+            response.setMessage("Deleted");
+        } catch (Exception e) {
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            response.setMessage("Error deleting images: " + e.getMessage());
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Exception " + e.getMessage());
+        }
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+
+    /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * Products related endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
+
+    @Operation(summary = "Create new product", description = "To create new product")
+    @PostMapping(path = { "/products/create" })
     public ResponseEntity<HttpResponse> postProduct(
             HttpServletRequest request,
             @RequestBody ProductRequest productRequest)
@@ -262,6 +405,13 @@ public class AdminController {
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "postProduct";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "Product Request" + productRequest);
         try {
@@ -324,8 +474,8 @@ public class AdminController {
 
     }
 
-    @Operation(summary = "Edit product", description = "Edit product")
-    @PutMapping(path = { "/product/{id}" })
+    @Operation(summary = "Edit product", description = "To edit product by product ID")
+    @PutMapping(path = { "/products/edit/{id}" })
     public ResponseEntity<HttpResponse> putProduct(
             HttpServletRequest request,
             @RequestBody ProductRequest productRequest,
@@ -334,6 +484,13 @@ public class AdminController {
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "putProduct";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "Product Id" + id);
         try {
@@ -420,7 +577,7 @@ public class AdminController {
     }
     
     @Operation(summary = "Create or edit product category", description = "Please include the id of object Product Category for edit purpose. ")
-    @PostMapping(path = { "/product-category" })
+    @PostMapping(path = { "/products/category" })
     public ResponseEntity<HttpResponse> postProductCategory(
             HttpServletRequest request,
             @RequestBody ProductCategory productCategoryRequest)
@@ -428,6 +585,13 @@ public class AdminController {
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "postProductCategory";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "Request body : " + productCategoryRequest);
         try {
@@ -455,14 +619,22 @@ public class AdminController {
 
     }
 
-    @DeleteMapping(path = { "/product-delete/{id}" })
+    @Operation(summary = "Delete product", description = "To delete product by ID")
+    @DeleteMapping(path = { "/products/delete/{id}" })
     public ResponseEntity<HttpResponse> deleteProduct(
             HttpServletRequest request,
             @PathVariable Integer id) {
+        HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "deleteProduct";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "Request Delete Product id : " + id);
-        HttpResponse response = new HttpResponse(request.getRequestURI());
         HttpStatus httpStatus;
 
         try {
@@ -481,13 +653,20 @@ public class AdminController {
 
     }
 
-    @DeleteMapping(path = { "/product-variant/{id}" })
+    @Operation(summary = "Delete variant", description = "To delete variant by ID")
+    @DeleteMapping(path = { "/products/variants/delete/{id}" })
     public ResponseEntity<HttpResponse> deleteProductVariant(
             HttpServletRequest request,
             @PathVariable Integer id) {
         String logprefix = "deleteProductVariant";
-
         HttpResponse response = new HttpResponse(request.getRequestURI());
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
         HttpStatus httpStatus;
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "Request Delete Variant id : " + id);
@@ -508,7 +687,366 @@ public class AdminController {
 
     }
 
-    @GetMapping(path = { "/transaction/history" })
+    @Operation(summary = "Bulk upload variants", description = "To upload variants in bulk by product ID and type")
+    @PostMapping("/products/variants/upload/bulk/{id}/{type}")
+    public ResponseEntity<HttpResponse> uploadFile(
+            HttpServletRequest request,
+            @RequestParam("file") MultipartFile file,
+            @PathVariable Integer id,
+            @PathVariable String type) {
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String message = "";
+        String logprefix = "uploadFile";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
+        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "Product id : " + id);
+
+        List<ProductVariant> objectList = new ArrayList<>();
+        List<ProductVariant> duplicate = new ArrayList<>();
+        List<ProductVariant> successList = new ArrayList<>();
+
+        if (CSVHelper.hasCSVFormat(file)) {
+            try {
+                objectList = csvService.convertToList(file, type);
+                for (ProductVariant variant : objectList) {
+                    variant.setProductId(id);
+                    Optional<ProductVariant> duplicateData = productVariantRepository
+                            .findByWspProductCode(variant.getWspProductCode());
+                    if (duplicateData.isPresent()) {
+                        duplicate.add(variant); // Add variant to the duplicate list
+                    } else {
+                        successList.add(variant);
+                        productVariantService.createProductVariant(variant);
+                    }
+                }
+
+                if (duplicate.size() > 0 && successList.size() < 1) {
+                    List<String> duplicateNames = new ArrayList<>();
+                    for (ProductVariant duplicateVariant : duplicate) {
+                        String variantName = duplicateVariant.getVariantName();
+                        duplicateNames.add(variantName);
+                    }
+                    message = "Failed To Upload. \nDuplicate WSP Product Code For Variant : "
+                            + duplicateNames.toString();
+
+                    Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                            "Failed To Upload. \nDuplicate WSP Product Code For Variant : "
+                                    + duplicateNames.toString());
+                    response.setStatus(HttpStatus.EXPECTATION_FAILED, message);
+                } else if (duplicate.size() > 0 && successList.size() > 0) {
+                    List<String> duplicateNames = new ArrayList<>();
+                    for (ProductVariant duplicateVariant : duplicate) {
+                        String variantName = duplicateVariant.getVariantName();
+                        duplicateNames.add(variantName);
+                    }
+
+                    List<String> succeStrings = new ArrayList<>();
+                    for (ProductVariant successVariant : successList) {
+                        String variantName = successVariant.getVariantName();
+                        succeStrings.add(variantName);
+                    }
+
+                    message = "Successful Upload: " + succeStrings.size() + "\nFailed To Upload: " + duplicate.size()
+                            + "\nDuplicate WSP Product Code for Variants: " + duplicateNames.toString();
+
+                    response.setStatus(HttpStatus.PARTIAL_CONTENT, message);
+                } else if (duplicate.size() < 1) {
+                    message = "Uploaded the file successfully: " + file.getOriginalFilename();
+                    response.setStatus(HttpStatus.OK, message);
+                }
+
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "file uploaded");
+
+                response.setMessage(message);
+
+                Optional<Product> data = productRepository.findById(id);
+                response.setData(data); // Set the list of product variants as the response data
+
+                return ResponseEntity.status(response.getStatus()).body(response);
+            } catch (Exception e) {
+                message = "Could not upload the file: " + file.getOriginalFilename() + "! " + e.getMessage();
+                response.setMessage(message);
+                // e.printStackTrace();
+                if (e.getMessage().contains("wspProductCode")) {
+                    System.err.println("PRINT HERE ::: " + e.getMessage());
+                    response.setStatus(HttpStatus.EXPECTATION_FAILED,
+                            "Duplicate WSP Product Code For : " + duplicate.toString());
+
+                } else {
+                    response.setStatus(HttpStatus.BAD_REQUEST, message);
+                }
+                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "Exception ", e);
+                return ResponseEntity.status(response.getStatus()).body(response);
+            }
+
+        }
+
+        message = "Please upload CSV file!";
+        response.setMessage(message);
+        response.setStatus(HttpStatus.BAD_REQUEST, message);
+
+        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "Please upload CSV file!");
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    @Operation(summary = "Bulk update variants", description = "To update variants in bulk by product ID and type")
+    @PostMapping("/products/variants/update/bulk/{id}/{type}")
+    public ResponseEntity<HttpResponse> uploadFileToUpdate(
+            HttpServletRequest request,
+            @RequestParam("file") MultipartFile file,
+            @PathVariable Integer id,
+            @PathVariable String type) {
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logprefix = "uploadFileToUpdate";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
+        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "ProductVariant id : " + id);
+
+        String message = "";
+        List<ProductVariant> objectList = new ArrayList<>();
+        String variantName = "";
+        Optional<ProductVariant> variantData = null;
+        if (CSVHelper.hasCSVFormat(file)) {
+            try {
+                objectList = csvService.convertToListToUpdate(file, type);
+                for (ProductVariant variant : objectList) {
+                    variant.setProductId(id);
+                    if (variant.getId() != null) {
+
+                        variantData = productVariantRepository.findByWspProductCode(variant.getWspProductCode());
+                        variantName = variant.getVariantName();
+                        productVariantService.updateProductVariant(variant.getId(), variant);
+                    } else {
+
+                    }
+                }
+
+                message = "Uploaded the file successfully: " + file.getOriginalFilename();
+                response.setStatus(HttpStatus.OK, message);
+                response.setMessage(message);
+
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "file uploaded");
+
+                Optional<Product> data = productRepository.findById(id);
+                response.setData(data); // Set the list of product variants as the response data
+
+                return ResponseEntity.status(response.getStatus()).body(response);
+            } catch (Exception e) {
+                // e.printStackTrace();
+                if (e.getMessage().contains("wspProductCode")) {
+                    message = "Duplicate WSP Product Code : " + variantData.get().getWspProductCode()
+                            + "\nVariant Name: " + variantName
+                            + "\nDuplicated With Variant : " + variantData.get().getVariantName();
+                    response.setStatus(HttpStatus.EXPECTATION_FAILED, message);
+                } else {
+                    message = "Could not upload the file: " + file.getOriginalFilename() + "! " + e.getMessage();
+                    response.setStatus(HttpStatus.BAD_REQUEST, message);
+                }
+                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "Exception " + e.getMessage());
+                response.setMessage(message);
+                return ResponseEntity.status(response.getStatus()).body(response);
+            }
+
+        }
+
+        message = "Please upload an Excel file!";
+        response.setMessage(message);
+        response.setStatus(HttpStatus.BAD_REQUEST, message);
+
+        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "Please upload an Excel file!");
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    @Operation(summary = "Edit variant", description = "To edit variant by ID")
+    @PutMapping(path = { "/products/variants/edit/{id}" })
+    public ResponseEntity<HttpResponse> putProductVariant(
+            HttpServletRequest request,
+            @RequestBody ProductRequest productRequest,
+            @PathVariable Integer id)
+            throws Exception {
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logprefix = "putProductVariant";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
+        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "ProductVariant id : " + id);
+        try {
+            if (productRequest.getProductVariant() != null) {
+                // to handle null product variant
+                if (!productRequest.getProductVariant().isEmpty()) {
+                    productRequest.getProductVariant().stream()
+                            .map((ProductVariantRequest x) -> {
+
+                                ProductVariant productVariant = ProductVariant.castReference(x);
+                                productVariant.setProductId(id);
+                                ProductVariant dataProductVariant;
+                                if (productVariant.getId() != null) {
+                                    dataProductVariant = productVariantService
+                                            .updateProductVariant(productVariant.getId(), productVariant);
+
+                                } else {
+                                    dataProductVariant = productVariantService.createProductVariant(productVariant);
+                                }
+
+                                return dataProductVariant;
+                            })
+                            .collect(Collectors.toList());
+                }
+            }
+
+            Optional<Product> data = productRepository.findById(id);
+
+            response.setStatus(HttpStatus.OK);
+            response.setData(data);
+        } catch (Exception e) {
+            e.printStackTrace();
+            if (e.getMessage().contains("wspProductCode")) {
+                response.setStatus(HttpStatus.EXPECTATION_FAILED, "Duplicate WSP Product Code.");
+            } else {
+                response.setStatus(HttpStatus.BAD_REQUEST, e.getMessage());
+            }
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Exception " + e.getMessage());
+
+        }
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+
+    }
+
+    @Operation(summary = "WSP create/update variant", description = "To create product variant by admin from pending customer rate plan (wsp db)")
+    @PostMapping(path = {"/products/variants/wsp" }, produces = "application/json")
+    public ResponseEntity<HttpResponse> createUpdateProductVariantByAdmin(
+            HttpServletRequest request,
+            @RequestParam String variantName,
+            @RequestParam String productCode,
+            @RequestParam String productName,
+            @RequestParam(required = false) Integer categoryId,
+            @RequestParam(required = false) Double price,
+            @RequestParam(required = false) VariantType variantType,
+            @RequestParam(required = false) VariantType productType,
+            @RequestParam String wspProductCode,
+            @RequestParam String countryCode,
+            @RequestParam(required = false) Double deno) {
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logprefix = "create-product-variant";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
+        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "Create or Update Product Variant");
+        try {
+            User user = userService.getUser(request.getHeader(HEADER_STRING));
+            if (user == null) {
+                response.setStatus(HttpStatus.NOT_FOUND);
+                response.setMessage("User Not Found");
+                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "User Not Found, User token : " + request.getHeader(HEADER_STRING));
+
+                return ResponseEntity.status(response.getStatus()).body(response);
+            }
+
+            // Create product
+            Product resultProduct = productService.createOrUpdateProduct(productCode, productName, categoryId,
+                    countryCode, productType);
+
+            // Call the service method to create a new product
+            ProductVariant createdProductVariant = productVariantService.createUpdateProductVariant(
+                    variantName, price, variantType, wspProductCode, resultProduct, deno);
+
+            // to return status and display data at swagger
+            response.setStatus(HttpStatus.OK, "Successfully");
+            response.setData(createdProductVariant);
+
+        } catch (Exception e) {
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            response.setMessage("Bad Request");
+
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Exception " + e.getMessage());
+        }
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+
+    }
+
+    @Operation(summary = "Dowload products CSV", description = "To download products in CSV form")
+    @GetMapping("/download/products/csv")
+    public ResponseEntity<?> downloadProductsCSV( HttpServletRequest request) {
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logprefix = "downloadProductsCSV";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
+        try {
+            List<Product> products = productRepository.findAll();
+            ByteArrayInputStream csvData = csvService.productsToCSV(products);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.add("Content-Disposition", "attachment; filename=products.csv");
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .contentType(MediaType.parseMediaType("text/csv"))
+                    .body(new InputStreamResource(csvData));
+        } catch (Exception e) {
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Exception " + e.getMessage());
+
+            // Return an error response
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error occurred while generating the CSV file: " + e.getMessage());
+
+        }
+    }
+
+
+     /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * Transactions related endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
+
+    @Operation(summary = "Get all transactions", description = "To retrieve all transactions with pagination/filter")
+    @GetMapping(path = { "/transactions/pagination" })
     public ResponseEntity<HttpResponse> getTransactionHistory(HttpServletRequest request,
             @RequestParam(defaultValue = "ASC", required = false) String sortingOrder,
             @RequestParam(defaultValue = "0") int page,
@@ -525,9 +1063,15 @@ public class AdminController {
             @RequestParam(required = false) String userId
 
     ) throws Exception {
+        HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "getTransactionHistory";
 
-        HttpResponse response = new HttpResponse(request.getRequestURI());
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "Requested");
         try {
@@ -651,372 +1195,17 @@ public class AdminController {
         };
     }
 
-    @PostMapping("/bulk/variant/upload/{id}/{type}")
-    public ResponseEntity<HttpResponse> uploadFile(
-            HttpServletRequest request,
-            @RequestParam("file") MultipartFile file,
-            @PathVariable Integer id,
-            @PathVariable String type) {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String message = "";
-        String logprefix = "uploadFile";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Product id : " + id);
-
-        List<ProductVariant> objectList = new ArrayList<>();
-        List<ProductVariant> duplicate = new ArrayList<>();
-        List<ProductVariant> successList = new ArrayList<>();
-
-        if (CSVHelper.hasCSVFormat(file)) {
-            try {
-                objectList = csvService.convertToList(file, type);
-                for (ProductVariant variant : objectList) {
-                    variant.setProductId(id);
-                    Optional<ProductVariant> duplicateData = productVariantRepository
-                            .findByWspProductCode(variant.getWspProductCode());
-                    if (duplicateData.isPresent()) {
-                        duplicate.add(variant); // Add variant to the duplicate list
-                    } else {
-                        successList.add(variant);
-                        productVariantService.createProductVariant(variant);
-                    }
-                }
-
-                if (duplicate.size() > 0 && successList.size() < 1) {
-                    List<String> duplicateNames = new ArrayList<>();
-                    for (ProductVariant duplicateVariant : duplicate) {
-                        String variantName = duplicateVariant.getVariantName();
-                        duplicateNames.add(variantName);
-                    }
-                    message = "Failed To Upload. \nDuplicate WSP Product Code For Variant : "
-                            + duplicateNames.toString();
-
-                    Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                            "Failed To Upload. \nDuplicate WSP Product Code For Variant : "
-                                    + duplicateNames.toString());
-                    response.setStatus(HttpStatus.EXPECTATION_FAILED, message);
-                } else if (duplicate.size() > 0 && successList.size() > 0) {
-                    List<String> duplicateNames = new ArrayList<>();
-                    for (ProductVariant duplicateVariant : duplicate) {
-                        String variantName = duplicateVariant.getVariantName();
-                        duplicateNames.add(variantName);
-                    }
-
-                    List<String> succeStrings = new ArrayList<>();
-                    for (ProductVariant successVariant : successList) {
-                        String variantName = successVariant.getVariantName();
-                        succeStrings.add(variantName);
-                    }
-
-                    message = "Successful Upload: " + succeStrings.size() + "\nFailed To Upload: " + duplicate.size()
-                            + "\nDuplicate WSP Product Code for Variants: " + duplicateNames.toString();
-
-                    response.setStatus(HttpStatus.PARTIAL_CONTENT, message);
-                } else if (duplicate.size() < 1) {
-                    message = "Uploaded the file successfully: " + file.getOriginalFilename();
-                    response.setStatus(HttpStatus.OK, message);
-                }
-
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "file uploaded");
-
-                response.setMessage(message);
-
-                Optional<Product> data = productRepository.findById(id);
-                response.setData(data); // Set the list of product variants as the response data
-
-                return ResponseEntity.status(response.getStatus()).body(response);
-            } catch (Exception e) {
-                message = "Could not upload the file: " + file.getOriginalFilename() + "! " + e.getMessage();
-                response.setMessage(message);
-                // e.printStackTrace();
-                if (e.getMessage().contains("wspProductCode")) {
-                    System.err.println("PRINT HERE ::: " + e.getMessage());
-                    response.setStatus(HttpStatus.EXPECTATION_FAILED,
-                            "Duplicate WSP Product Code For : " + duplicate.toString());
-
-                } else {
-                    response.setStatus(HttpStatus.BAD_REQUEST, message);
-                }
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Exception ", e);
-                return ResponseEntity.status(response.getStatus()).body(response);
-            }
-
-        }
-
-        message = "Please upload CSV file!";
-        response.setMessage(message);
-        response.setStatus(HttpStatus.BAD_REQUEST, message);
-
-        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Please upload CSV file!");
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @PostMapping("/bulk/variant/uploadToUpdate/{id}/{type}")
-    public ResponseEntity<HttpResponse> uploadFileToUpdate(
-            HttpServletRequest request,
-            @RequestParam("file") MultipartFile file,
-            @PathVariable Integer id,
-            @PathVariable String type) {
-
-        String logprefix = "uploadFileToUpdate";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "ProductVariant id : " + id);
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String message = "";
-        List<ProductVariant> objectList = new ArrayList<>();
-        String variantName = "";
-        Optional<ProductVariant> variantData = null;
-        if (CSVHelper.hasCSVFormat(file)) {
-            try {
-                objectList = csvService.convertToListToUpdate(file, type);
-                for (ProductVariant variant : objectList) {
-                    variant.setProductId(id);
-                    if (variant.getId() != null) {
-
-                        variantData = productVariantRepository.findByWspProductCode(variant.getWspProductCode());
-                        variantName = variant.getVariantName();
-                        productVariantService.updateProductVariant(variant.getId(), variant);
-                    } else {
-
-                    }
-                }
-
-                message = "Uploaded the file successfully: " + file.getOriginalFilename();
-                response.setStatus(HttpStatus.OK, message);
-                response.setMessage(message);
-
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "file uploaded");
-
-                Optional<Product> data = productRepository.findById(id);
-                response.setData(data); // Set the list of product variants as the response data
-
-                return ResponseEntity.status(response.getStatus()).body(response);
-            } catch (Exception e) {
-                // e.printStackTrace();
-                if (e.getMessage().contains("wspProductCode")) {
-                    message = "Duplicate WSP Product Code : " + variantData.get().getWspProductCode()
-                            + "\nVariant Name: " + variantName
-                            + "\nDuplicated With Variant : " + variantData.get().getVariantName();
-                    response.setStatus(HttpStatus.EXPECTATION_FAILED, message);
-                } else {
-                    message = "Could not upload the file: " + file.getOriginalFilename() + "! " + e.getMessage();
-                    response.setStatus(HttpStatus.BAD_REQUEST, message);
-                }
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Exception " + e.getMessage());
-                response.setMessage(message);
-                return ResponseEntity.status(response.getStatus()).body(response);
-            }
-
-        }
-
-        message = "Please upload an Excel file!";
-        response.setMessage(message);
-        response.setStatus(HttpStatus.BAD_REQUEST, message);
-
-        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Please upload an Excel file!");
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @Operation(summary = "Edit variant", description = "Edit variant")
-    @PutMapping(path = { "/productVariant/{id}" })
-    public ResponseEntity<HttpResponse> putProductVariant(
-            HttpServletRequest request,
-            @RequestBody ProductRequest productRequest,
-            @PathVariable Integer id)
-            throws Exception {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "putProductVariant";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "ProductVariant id : " + id);
-        try {
-            if (productRequest.getProductVariant() != null) {
-                // to handle null product variant
-                if (!productRequest.getProductVariant().isEmpty()) {
-                    productRequest.getProductVariant().stream()
-                            .map((ProductVariantRequest x) -> {
-
-                                ProductVariant productVariant = ProductVariant.castReference(x);
-                                productVariant.setProductId(id);
-                                ProductVariant dataProductVariant;
-                                if (productVariant.getId() != null) {
-                                    dataProductVariant = productVariantService
-                                            .updateProductVariant(productVariant.getId(), productVariant);
-
-                                } else {
-                                    dataProductVariant = productVariantService.createProductVariant(productVariant);
-                                }
-
-                                return dataProductVariant;
-                            })
-                            .collect(Collectors.toList());
-                }
-            }
-
-            Optional<Product> data = productRepository.findById(id);
-
-            response.setStatus(HttpStatus.OK);
-            response.setData(data);
-        } catch (Exception e) {
-            e.printStackTrace();
-            if (e.getMessage().contains("wspProductCode")) {
-                response.setStatus(HttpStatus.EXPECTATION_FAILED, "Duplicate WSP Product Code.");
-            } else {
-                response.setStatus(HttpStatus.BAD_REQUEST, e.getMessage());
-            }
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-
-    }
-
-    @PostMapping(path = "/makeAsAdmin")
-    public ResponseEntity<HttpResponse> makeAsAdmin(
-            HttpServletRequest request,
-            @RequestBody User userBody) {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "makeAsAdmin";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "makeAsAdmin Request : " + userBody);
-        try {
-
-            Optional<User> existingUser = userRepository.findById(userBody.getId());
-            if (existingUser.isPresent()) {
-                User user = existingUser.get();
-                user.setRole(userBody.getRole());
-                userRepository.save(user);
-            }
-
-            response.setData(existingUser);
-            response.setStatus(HttpStatus.OK);
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            response.setStatus(HttpStatus.EXPECTATION_FAILED);
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-
-    }
-
-    @PostMapping("/postBulkBanners/{section}")
-    public ResponseEntity<HttpResponse> createOrUpdateBulkBanners(HttpServletRequest request,
-            @PathVariable String section,
-            @RequestBody List<Banner> banners) {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "postBulkBanners";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Request body " + banners);
-        try {
-            Date now = new Date();
-
-            // Delete all existing banners by section
-            bannerRepository.deleteBySection(section.toLowerCase());
-
-            // Create new banners
-            List<Banner> createdBanners = new ArrayList<>();
-            for (Banner banner : banners) {
-                banner.setName(banner.getName());
-                banner.setImageId(banner.getImageId());
-                banner.setUrl(banner.getUrl());
-                banner.setSection(section.toLowerCase());
-                banner.setCreatedAt(now);
-                banner.setUpdatedAt(now);
-                Banner createdBanner = bannerRepository.save(banner);
-
-                // Fetch associated image details
-                ImageAssets imageOptional = imageAssetsRepository.findById(banner.getImageId()).orElse(null);
-                createdBanner.setImageDetails(imageOptional);
-
-                createdBanners.add(createdBanner);
-            }
-
-            response.setStatus(HttpStatus.OK);
-            response.setData(createdBanners);
-            response.setMessage("Created banners: " + createdBanners.size());
-        } catch (Exception e) {
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setMessage("Error creating banners: " + e.getMessage());
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-        }
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @DeleteMapping("/deleteBulkImages")
-    public ResponseEntity<HttpResponse> deleteBulkImages(HttpServletRequest request,
-            @RequestBody List<String> imageIds) {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "deleteBulkImages";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Request id " + imageIds);
-        try {
-            List<String> deletedIds = imageAssetService.bulkDeleteImage(imageIds);
-
-            response.setStatus(HttpStatus.OK);
-            response.setData(deletedIds);
-            response.setMessage("Deleted images: " + deletedIds.size());
-        } catch (Exception e) {
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setMessage("Error deleting images: " + e.getMessage());
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-        }
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @DeleteMapping("/deleteImageById/{fileName}")
-    public ResponseEntity<HttpResponse> deleteImageById(HttpServletRequest request,
-            @PathVariable String fileName) {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "deleteImageById";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "fileName " + fileName);
-        Optional<ImageAssets> optionalImageAssets = imageAssetsRepository.findByFileName(fileName);
-
-        // Return if not found
-        if (!optionalImageAssets.isPresent()) {
-            response.setStatus(HttpStatus.NOT_FOUND, "Image id not found");
-            return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
-        try {
-            ImageAssets imageAssets = optionalImageAssets.get();
-
-            imageAssetService.deleteImageFile(fileName, imageAssets.getImageType());
-
-            response.setStatus(HttpStatus.OK);
-            response.setData(fileName);
-            response.setMessage("Deleted");
-        } catch (Exception e) {
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setMessage("Error deleting images: " + e.getMessage());
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-        }
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @PutMapping("/editTransactionStatus/{id}")
+    @Operation(summary = "Update transaction status", description = "To update transation status")
+    @PutMapping("/transactions/edit/status/{id}")
     public ResponseEntity<HttpResponse> editTransactionStatus(HttpServletRequest request, @PathVariable String id) {
         HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "editTransactionStatus()";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
 
         try {
             User user = userService.getUser(request.getHeader(HEADER_STRING));
@@ -1088,15 +1277,68 @@ public class AdminController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @GetMapping("/getSettlementByBatchDate")
+  
+     /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * Other endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
+
+    @Operation(summary = "Assign user as Admin", description = "To assign user role to ADMIN")
+    @PostMapping(path = "/assign-as-admin")
+    public ResponseEntity<HttpResponse> makeAsAdmin(
+            HttpServletRequest request,
+            @RequestBody User userBody) {
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logprefix = "makeAsAdmin";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
+
+        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                "makeAsAdmin Request : " + userBody);
+        try {
+
+            Optional<User> existingUser = userRepository.findById(userBody.getId());
+            if (existingUser.isPresent()) {
+                User user = existingUser.get();
+                user.setRole(userBody.getRole());
+                userRepository.save(user);
+            }
+
+            response.setData(existingUser);
+            response.setStatus(HttpStatus.OK);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            response.setStatus(HttpStatus.EXPECTATION_FAILED);
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Exception " + e.getMessage());
+        }
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+
+    }
+
+    @Operation(summary = "Get settlement by batch date", description = "Fetches paginated settlements filtered by batch date")
+    @GetMapping("/settlement-by-batch-date")
     public ResponseEntity<HttpResponse> getSettlementByBatchDate(HttpServletRequest request,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(name = "batchDate", required = true) String batchDateString) {
 
         HttpResponse response = new HttpResponse(request.getRequestURI());
-
         String logprefix = "getSettlementByBatchDate";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
 
         try {
             Pageable pageable = PageRequest.of(page, pageSize);
@@ -1119,13 +1361,19 @@ public class AdminController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @GetMapping("/getSummary")
+    @Operation(summary = "Get summarie", description = "Fetches paginated summary records sorted by date.")
+    @GetMapping("/summary")
     public ResponseEntity<HttpResponse> getAllSummary(HttpServletRequest request,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
         HttpResponse response = new HttpResponse(request.getRequestURI());
-
         String logprefix = "getAllSummary";
+
+        // verify admin role
+        ResponseEntity<HttpResponse> roleCheck = adminService.filterRole(request, response);
+        if (roleCheck != null) {
+            return roleCheck;
+        }
 
         try {
             Pageable pageable = PageRequest.of(page, pageSize);
@@ -1145,130 +1393,6 @@ public class AdminController {
         }
 
         return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    // create product variant by admin from pending customer rate plan (wsp
-    // database)
-    @PostMapping(path = {
-            "/createOrUpdate/product-variant" }, name = "create-update-product-variant-by-admin", produces = "application/json")
-    public ResponseEntity<HttpResponse> createUpdateProductVariantByAdmin(
-            HttpServletRequest request,
-            @RequestParam String variantName,
-            @RequestParam String productCode,
-            @RequestParam String productName,
-            @RequestParam(required = false) Integer categoryId,
-            @RequestParam(required = false) Double price,
-            @RequestParam(required = false) VariantType variantType,
-            @RequestParam(required = false) VariantType productType,
-            @RequestParam String wspProductCode,
-            @RequestParam String countryCode,
-            @RequestParam(required = false) Double deno) {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "create-product-variant";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Create or Update Product Variant");
-        try {
-            User user = userService.getUser(request.getHeader(HEADER_STRING));
-            if (user == null) {
-                response.setStatus(HttpStatus.NOT_FOUND);
-                response.setMessage("User Not Found");
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "User Not Found, User token : " + request.getHeader(HEADER_STRING));
-
-                return ResponseEntity.status(response.getStatus()).body(response);
-            }
-
-            // Create product
-            Product resultProduct = productService.createOrUpdateProduct(productCode, productName, categoryId,
-                    countryCode, productType);
-
-            // Call the service method to create a new product
-            ProductVariant createdProductVariant = productVariantService.createUpdateProductVariant(
-                    variantName, price, variantType, wspProductCode, resultProduct, deno);
-
-            // to return status and display data at swagger
-            response.setStatus(HttpStatus.OK, "Successfully");
-            response.setData(createdProductVariant);
-
-        } catch (Exception e) {
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setMessage("Bad Request");
-
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-
-    }
-
-    @GetMapping("/download/products/csv")
-    public ResponseEntity<?> downloadProductsCSV() {
-        try {
-            List<Product> products = productRepository.findAll();
-            ByteArrayInputStream csvData = csvService.productsToCSV(products);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("Content-Disposition", "attachment; filename=products.csv");
-
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .contentType(MediaType.parseMediaType("text/csv"))
-                    .body(new InputStreamResource(csvData));
-        } catch (Exception e) {
-            // Return an error response
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error occurred while generating the CSV file: " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/csv-upload/update-variant-service-id")
-    public ResponseEntity<HttpResponse> uploadCsvToUpdateVariantServiceID(HttpServletRequest request,
-            @RequestParam("file") MultipartFile file) {
-
-        String logPrefix = "uploadCsvToUpdateVariantServiceID";
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-
-        if (file.isEmpty() || !CSVHelper.hasCSVFormat(file)) {
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setMessage("Invalid file. Please upload a CSV file.");
-            return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
-        try (InputStream inputStream = file.getInputStream()) {
-            // Call the service to update serviceIds from the uploaded CSV
-            List<String> skippedLines = productVariantService.updateServiceIdsFromCSV(inputStream);
-            response.setStatus(HttpStatus.OK);
-            if (!skippedLines.isEmpty()) {
-                response.setData(skippedLines); // Set skipped lines in response
-                response.setMessage("Some rows were skipped due to issues");
-            } else {
-                response.setMessage("All rows processed successfully");
-            }
-        } catch (Exception e) {
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                    "Exception " + e.getMessage());
-
-            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
-        }
-        return ResponseEntity.status(response.getStatus()).body(response);
-
-    }
-
-    @PostMapping("/send-fraud-alert")
-    public ResponseEntity<String> sendFraudEmail() {
-        Optional<Transaction> transaction = transactionRepository.findById("44b86cdc-4ebd-4fe5-896b-715595507ab1");
-        if (!transaction.isPresent()) {
-            return ResponseEntity.badRequest().body("Transaction not found");
-        }
-
-        try {
-            emailService.sendFraudAlert(transaction.get());
-            return ResponseEntity.ok("Fraud alert email sent successfully");
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Failed to send email: " + e.getMessage());
-        }
     }
 
 }

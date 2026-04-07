@@ -33,7 +33,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/product")
+@RequestMapping("/products")
 public class ProductController {
 
     @Autowired
@@ -112,117 +112,7 @@ public class ProductController {
 
         return ResponseEntity.status(response.getStatus()).body(response);
     }
-
-    @Operation(summary = "Get category by country", description = "To retrieve vategory by country code")
-    @GetMapping("/category-by-country")
-    public ResponseEntity<HttpResponse> getCategories(HttpServletRequest request,
-            @RequestParam(required = true) String countryCode) {
-
-        String logprefix = "getCategories";
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-
-        if (countryCode == null) {
-            response.setError("Country code is required.");
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Country code is required.");
-            return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
-        // Fetch distinct categories by countryCode and ACTIVE status directly from the
-        // database
-        List<String> categories = productRepository.findDistinctCategoriesByCountryCodeAndStatus(countryCode,
-                Status.ACTIVE);
-
-        // Fetch category details from VariantCategoryRepository
-        List<VariantCategory> list = categories.stream()
-                .map(category -> variantCategoryRepository.findById(category).orElse(null))
-                .filter(Objects::nonNull)
-                .distinct()
-                .sorted(Comparator.comparing(VariantCategory::getPriority))
-                .collect(Collectors.toList());
-
-        response.setData(list);
-        response.setStatus(HttpStatus.OK);
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @Operation(summary = "Get all product category", description = "To get the product category. If you want to get the subcategory pass query param parent category id. If you want to get a list of parent categories, just send a null value for the query param parentCategoryId")
-    @GetMapping("/all-category")
-    public ResponseEntity<HttpResponse> getProductCategory(HttpServletRequest request,
-            @RequestParam(required = false) Integer parentCategoryId,
-            @RequestParam(required = false) String countryCode) {
-
-        String logprefix = "getProductCategory";
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-
-        try {
-            List<ProductCategory> categories;
-
-            if (countryCode != null) {
-                // Get filtered categories by country code and parent category (if provided)
-                categories = productRepository.findActiveCategoriesByCountryCodeAndParentCategory(Status.ACTIVE,
-                        countryCode, parentCategoryId);
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Filtering by country code: " + countryCode);
-            } else {
-                // Get categories without filtering
-                categories = productCategoryService.getProductCategory(parentCategoryId);
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "No country code filtering applied.");
-            }
-
-            response.setData(categories);
-            response.setStatus(HttpStatus.OK);
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setError("Error: " + e.getMessage());
-
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception: " + e.getMessage());
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @Operation(summary = "Get specific category id", description = "To get the product category id")
-    @GetMapping("/category/{id}")
-    public ResponseEntity<HttpResponse> getProductCategoryId(HttpServletRequest request,
-            @PathVariable(required = false) Integer id) {
-        String logprefix = "getProductCategoryId";
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-
-        try {
-
-            Optional<ProductCategory> data = productCategoryService.getProductCategoryId(id);
-
-            if (data.isPresent()) {
-                response.setData(data.get());
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Category Id : " + id);
-            } else {
-                response.setData("NOTFOUND");
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Id Not Found : " + id);
-            }
-
-            response.setStatus(HttpStatus.OK);
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("ERRROR:::" + e.getMessage());
-            response.setStatus(HttpStatus.BAD_REQUEST);
-
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
+    
     @Operation(summary = "Get product types", description = "To retrive product variant types")
     @GetMapping("/type")
     public ResponseEntity<List<VariantType>> getProductType() {
@@ -348,33 +238,8 @@ public class ProductController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    /**
-     * ------------------------------------------------------------------------------------------------------------------------------------------------
-     * Others  endpoints
-     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-     */
-
-    @Operation(summary = "Get count of incomplete products", description = "To retrieve counts of incomplete products: non-bill products (missing category or variant) and bill payment products (missing category, variant, or required fields)")
-    @GetMapping("/incomplete-count")
-    public ResponseEntity<HttpResponse> getIncompleteCount(HttpServletRequest request) {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-
-        Long countIncomplete = productRepository.countProductsNotPhysicalOrBillPaymentAndNoVariant();
-        Long countIncomplete2 = productRepository.countProductsPaymentAndNoRequiredField();
-
-        final Map<String, Object> body = new HashMap<>();
-        body.put("product", countIncomplete);
-        body.put("bill", countIncomplete2);
-
-        response.setData(body);
-        response.setStatus(HttpStatus.OK);
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @Operation(summary = "Get region country", description = "To retrieve all information related to region country")
-    @GetMapping("/country")
+    @Operation(summary = "Get country by category ID", description = "To retrieve all information related to region country")
+    @GetMapping("/country-by-category")
     public ResponseEntity<HttpResponse> getRegionCountry(HttpServletRequest request,
             @RequestParam(required = false) Integer categoryId) {
         String logprefix = "getRegionCountry";
@@ -398,6 +263,141 @@ public class ProductController {
                     "Exception " + e.getMessage());
 
         }
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    @Operation(summary = "Get category by country", description = "To retrieve category by country code")
+    @GetMapping("/category-by-country")
+    public ResponseEntity<HttpResponse> getCategories(HttpServletRequest request,
+            @RequestParam(required = true) String countryCode) {
+
+        String logprefix = "getCategories";
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+
+        if (countryCode == null) {
+            response.setError("Country code is required.");
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Country code is required.");
+            return ResponseEntity.status(response.getStatus()).body(response);
+        }
+
+        // Fetch distinct categories by countryCode and ACTIVE status directly from the
+        // database
+        List<String> categories = productRepository.findDistinctCategoriesByCountryCodeAndStatus(countryCode,
+                Status.ACTIVE);
+
+        // Fetch category details from VariantCategoryRepository
+        List<VariantCategory> list = categories.stream()
+                .map(category -> variantCategoryRepository.findById(category).orElse(null))
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted(Comparator.comparing(VariantCategory::getPriority))
+                .collect(Collectors.toList());
+
+        response.setData(list);
+        response.setStatus(HttpStatus.OK);
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    @Operation(summary = "Get all product category", description = "To get the product category. If you want to get the subcategory pass query param parent category id. If you want to get a list of parent categories, just send a null value for the query param parentCategoryId")
+    @GetMapping("/all-category")
+    public ResponseEntity<HttpResponse> getProductCategory(HttpServletRequest request,
+            @RequestParam(required = false) Integer parentCategoryId,
+            @RequestParam(required = false) String countryCode) {
+
+        String logprefix = "getProductCategory";
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+
+        try {
+            List<ProductCategory> categories;
+
+            if (countryCode != null) {
+                // Get filtered categories by country code and parent category (if provided)
+                categories = productRepository.findActiveCategoriesByCountryCodeAndParentCategory(Status.ACTIVE,
+                        countryCode, parentCategoryId);
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "Filtering by country code: " + countryCode);
+            } else {
+                // Get categories without filtering
+                categories = productCategoryService.getProductCategory(parentCategoryId);
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "No country code filtering applied.");
+            }
+
+            response.setData(categories);
+            response.setStatus(HttpStatus.OK);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            response.setStatus(HttpStatus.BAD_REQUEST);
+            response.setError("Error: " + e.getMessage());
+
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Exception: " + e.getMessage());
+        }
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    @Operation(summary = "Get specific category id", description = "To get the product category id")
+    @GetMapping("/category/{id}")
+    public ResponseEntity<HttpResponse> getProductCategoryId(HttpServletRequest request,
+            @PathVariable(required = false) Integer id) {
+        String logprefix = "getProductCategoryId";
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+
+        try {
+
+            Optional<ProductCategory> data = productCategoryService.getProductCategoryId(id);
+
+            if (data.isPresent()) {
+                response.setData(data.get());
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "Category Id : " + id);
+            } else {
+                response.setData("NOTFOUND");
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "Id Not Found : " + id);
+            }
+
+            response.setStatus(HttpStatus.OK);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("ERRROR:::" + e.getMessage());
+            response.setStatus(HttpStatus.BAD_REQUEST);
+
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "Exception " + e.getMessage());
+        }
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * Others  endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
+
+    @Operation(summary = "Get count of incomplete products", description = "To retrieve counts of incomplete products: non-bill products (missing category or variant) and bill payment products (missing category, variant, or required fields)")
+    @GetMapping("/incomplete-count")
+    public ResponseEntity<HttpResponse> getIncompleteCount(HttpServletRequest request) {
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+
+        Long countIncomplete = productRepository.countProductsNotPhysicalOrBillPaymentAndNoVariant();
+        Long countIncomplete2 = productRepository.countProductsPaymentAndNoRequiredField();
+
+        final Map<String, Object> body = new HashMap<>();
+        body.put("product", countIncomplete);
+        body.put("bill", countIncomplete2);
+
+        response.setData(body);
+        response.setStatus(HttpStatus.OK);
 
         return ResponseEntity.status(response.getStatus()).body(response);
     }

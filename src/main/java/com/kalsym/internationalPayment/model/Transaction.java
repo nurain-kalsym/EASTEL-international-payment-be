@@ -147,17 +147,4 @@ public class Transaction {
     @Transient
     protected String otpNo;
 
-    private Double discountAmount;
-    @JsonIgnore()
-    private String discountId;
-
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "discountId", referencedColumnName = "id", updatable = false, insertable = false)
-    @NotFound(action = NotFoundAction.IGNORE)
-    private Discount discount;
-
-    private Double coinsRedeemed;
-
-    private Boolean isFraud;
-
 }

@@ -13,12 +13,13 @@ import com.kalsym.internationalPayment.repositories.BannerRepository;
 import com.kalsym.internationalPayment.services.BannerService;
 import com.kalsym.internationalPayment.utility.HttpResponse;
 
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 
 @RestController
-@RequestMapping("banner")
+@RequestMapping("banners")
 public class BannerController {
 
     @Autowired
@@ -27,7 +28,8 @@ public class BannerController {
     @Autowired
     BannerRepository bannerRepository;
 
-    @GetMapping("")
+    @Operation(summary = "Get all banners", description = "To retrieve all banners")
+    @GetMapping("/all")
     public ResponseEntity<HttpResponse> getAllBanners(HttpServletRequest request) {
         HttpResponse response = new HttpResponse(request.getRequestURI());
         try {
@@ -42,7 +44,8 @@ public class BannerController {
 
     }
 
-    @GetMapping("/get-by-section/{section}")
+    @Operation(summary = "Get by section", description = "To retrive banners by section")
+    @GetMapping("/section/{section}")
     public ResponseEntity<HttpResponse> getBannersBySection(HttpServletRequest request, @PathVariable String section)  {
         HttpResponse response = new HttpResponse(request.getRequestURI());
         try {

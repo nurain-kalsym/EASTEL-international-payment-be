@@ -12,6 +12,8 @@ import com.kalsym.internationalPayment.repositories.CountryRepository;
 import com.kalsym.internationalPayment.utility.HttpResponse;
 import com.kalsym.internationalPayment.utility.Logger;
 
+import io.swagger.v3.oas.annotations.Operation;
+
 import java.util.List;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,8 +25,8 @@ public class CountryController {
     @Autowired
     private CountryRepository countryRepository;
 
-    // GET all countries and filter by countryName
-    @GetMapping("")
+    @Operation(summary = "Get all countries", description = "To retrieve country list sorted by country name")
+    @GetMapping("/all")
     public ResponseEntity<HttpResponse> getAllCountries(HttpServletRequest request) {
         HttpResponse response = new HttpResponse(request.getRequestURI());
 
@@ -45,6 +47,7 @@ public class CountryController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
+    @Operation(summary = "Get country by country code", description = "To retrive specific country by code")
     @GetMapping("/{countryCode}")
     public ResponseEntity<HttpResponse> getCountryByCountryCode(
             HttpServletRequest request,

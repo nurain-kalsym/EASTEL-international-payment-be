@@ -75,18 +75,11 @@ public class SecurityConfig {
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
-                    // "/**",
-                    "/user/**",
+                     "/auth/**",
                     "/payment/payment-channel/**",
                     "/payment/exchange/currency/**",
                     "/payment/validateBill/**",
-                    "/countries/**",
-                    "/dashboard/**",
-                    "/banner/**",
-                    "/discount/list-discounted-price",
-                    "/discount/give-discount-coupon",
                     "/assets/image/**",
-                    // "/product/**",
                     "/callback",
                     "/payment/callback",
                     "/payment/**/status",

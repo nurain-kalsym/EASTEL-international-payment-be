@@ -1,6 +1,8 @@
 package com.kalsym.internationalPayment.utility;
 
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -35,27 +37,27 @@ public class JwtUtils {
   private String centralAuthServiceSecret;
 
   public String getHeaderBearer(HttpServletRequest request) {
-
     String bearerHeaderValue = request.getHeader("Authorization");
 
-    if (bearerHeaderValue != null) {
-      return bearerHeaderValue;
-    } else {
-      return null;
+    if (bearerHeaderValue != null && bearerHeaderValue.startsWith("Bearer ")) {
+        // remove "Bearer " prefix
+        return bearerHeaderValue.substring(7);
     }
+
+    return null; // no token found
 
   }
 
   public String getJwtToken(MySQLUserDetails userPrincipal) {
 
-    String jwt = generateTokenFromUsername(userPrincipal.getUsername(), userPrincipal.getId());
+    String jwt = generateTokenFromUsername(userPrincipal.getUsername(), userPrincipal.getId(), userPrincipal.getRole());
     return jwt;
 
   }
 
   public String getJwtToken(User user) {
 
-    String jwt = generateTokenFromUsername(user.getEmail(), user.getId());
+    String jwt = generateTokenFromUsername(user.getEmail(), user.getId(), new Date());
     return jwt;
 
   }
@@ -70,6 +72,23 @@ public class JwtUtils {
             .signWith(SignatureAlgorithm.HS512, jwtSecret)
             .compact();
 
+  }
+
+  public String getRoleFromToken(String token) {
+      Claims claims = Jwts.parser()
+              .setSigningKey(jwtSecret)
+              .parseClaimsJws(token)
+              .getBody();
+
+      return claims.get("role", String.class);
+  }
+
+  public Boolean isAdminRole(String token) {
+    if("ADMIN".equalsIgnoreCase(getRoleFromToken(token))) {
+      return true;
+    } else {
+      return false;
+    }
   }
 
   public String refreshToken(String authToken) {
@@ -135,14 +154,18 @@ public class JwtUtils {
     return false;
   }
 
-  public String generateTokenFromUsername(String username, String jti) {
-    return Jwts.builder()
-        .setSubject(username)
-        .setId(jti)
-        .setIssuedAt(new Date())
-        .setExpiration(new Date((new Date()).getTime() + jwtExpirationMs))
-        .signWith(SignatureAlgorithm.HS512, jwtSecret)
-        .compact();
+  public String generateTokenFromUsername(String username, String id, String role) {
+      Map<String, Object> claims = new HashMap<>();
+      claims.put("id", id);          // optional, already storing userId
+      claims.put("role", role);      // add user role here
+
+      return Jwts.builder()
+              .setClaims(claims)
+              .setSubject(username)
+              .setIssuedAt(new Date())
+              .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
+              .signWith(SignatureAlgorithm.HS512, jwtSecret)
+              .compact();
   }
 
   public String generateTokenFromUsername(String username, String jti, Date issueAt) {

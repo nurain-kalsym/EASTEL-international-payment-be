@@ -10,18 +10,15 @@ import com.kalsym.internationalPayment.model.Product;
 import com.kalsym.internationalPayment.model.ProductCategory;
 import com.kalsym.internationalPayment.model.ProductVariant;
 import com.kalsym.internationalPayment.model.categoryTree.TreeNode;
-import com.kalsym.internationalPayment.model.dao.ProductDto;
 import com.kalsym.internationalPayment.model.enums.Status;
 import com.kalsym.internationalPayment.model.enums.VariantType;
 import com.kalsym.internationalPayment.repositories.CountryRepository;
 import com.kalsym.internationalPayment.repositories.ProductCategoryRepository;
-import com.kalsym.internationalPayment.repositories.ProductDiscountRepository;
 import com.kalsym.internationalPayment.repositories.ProductRepository;
 
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
-import jakarta.transaction.Transactional;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -30,9 +27,6 @@ public class ProductService {
 
     @Autowired
     ProductRepository productRepository;
-
-    @Autowired
-    ProductDiscountRepository productDiscountRepository;
 
     @Autowired
     ProductVariantService productVariantService;
@@ -112,61 +106,32 @@ public class ProductService {
             Status status, Integer categoryId, Integer parentCategoryId, String countryCode,
             String variantCategory, String searchProduct, Status variantStatus) {
 
-        Pageable pageable = PageRequest.of(page, pageSize);
-
-        if (sortingOrder == Sort.Direction.ASC)
-            pageable = PageRequest.of(page, pageSize, Sort.by(sortBy).ascending());
-        else if (sortingOrder == Sort.Direction.DESC)
-            pageable = PageRequest.of(page, pageSize, Sort.by(sortBy).descending());
+        Pageable pageable = PageRequest.of(page, pageSize,
+                sortingOrder == Sort.Direction.ASC ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending());
 
         Specification<Product> productSpecs = searchCriteriaProduct(
                 status, categoryId, parentCategoryId, countryCode,
                 variantCategory, searchProduct, variantStatus);
 
         Page<Product> result = productRepository.findAll(productSpecs, pageable);
-        List<Product> tempResultList = result.getContent();
 
-        tempResultList.stream()
-                .map((Product x) -> {
-                    x.setFeaturedImage(x.getImageDetails() != null ? x.getImageDetails().getImageUrl() : null);
+        List<Product> processedProducts = result.getContent().stream()
+                .map(product -> {
+                    // Set featured image
+                    product.setFeaturedImage(
+                            product.getImageDetails() != null ? product.getImageDetails().getImageUrl() : null
+                    );
 
-                    List<ProductVariant> setProductVariantDiscount = x.getProductVariant().stream()
-                            // real filter of country code
-                            .filter(y -> variantStatus == null || y.getStatus().equals(variantStatus))
-                            .filter(y -> variantCategory == null || y.getCategory().equals(variantCategory))
+                    // Filter variants based on variantStatus and variantCategory
+                    List<ProductVariant> filteredVariants = product.getProductVariant().stream()
+                            .filter(variant -> variantStatus == null || variant.getStatus().equals(variantStatus))
+                            .filter(variant -> variantCategory == null || variant.getCategory().equals(variantCategory))
+                            .collect(Collectors.toList());
 
-                            .map((ProductVariant y) -> {
+                    // Set filtered variants
+                    product.setProductVariant(filteredVariants);
 
-                                List<Object[]> callProcedureProductDiscount = productDiscountRepository
-                                        .getProductDiscount(y.getId());//
-                                Object[] accessValue = callProcedureProductDiscount.get(0);
-
-                                // SELECT discountName, startDate, endDate, calculationType, discountAmount
-
-                                Double discountedPrice = null;
-                                String discountName = String.valueOf(accessValue[0]);
-                                // procedure that return 0 is not in period of discount
-                                if (!discountName.equals("0")) {
-                                    if (String.valueOf(accessValue[3]).equals("FIX")) {
-                                        discountedPrice = y.getPrice()
-                                                - Double.parseDouble(String.valueOf(accessValue[4]));
-
-                                    } else if (String.valueOf(accessValue[3]).equals("PERCENT")) {
-                                        discountedPrice = y.getPrice()
-                                                - (Double.parseDouble(String.valueOf(accessValue[4])) / 100
-                                                        * y.getPrice());
-
-                                    }
-
-                                }
-
-                                y.setDiscountedPrice(discountedPrice);
-                                return y;
-                            }).collect(Collectors.toList());
-
-                    x.setProductVariant(setProductVariantDiscount);
-
-                    return x;
+                    return product;
                 })
                 .collect(Collectors.toList());
 

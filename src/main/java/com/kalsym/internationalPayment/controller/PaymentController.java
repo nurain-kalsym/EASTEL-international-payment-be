@@ -6,45 +6,36 @@ import com.kalsym.internationalPayment.InternationalPaymentApplication;
 import com.kalsym.internationalPayment.model.*;
 import com.kalsym.internationalPayment.model.dao.*;
 import com.kalsym.internationalPayment.model.dao.Order.OrderConfirm;
-import com.kalsym.internationalPayment.model.enums.DiscountUserStatus;
 import com.kalsym.internationalPayment.model.enums.PaymentStatus;
 import com.kalsym.internationalPayment.model.enums.TransactionEnum;
-import com.kalsym.internationalPayment.model.enums.VariantType;
 import com.kalsym.internationalPayment.repositories.*;
 import com.kalsym.internationalPayment.services.*;
 import com.kalsym.internationalPayment.utility.HttpResponse;
 import com.kalsym.internationalPayment.utility.Logger;
-import com.kalsym.internationalPayment.utility.StringUtility;
 
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.convert.QueryByExamplePredicateBuilder;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 
-import static com.kalsym.internationalPayment.filter.SessionRequestFilter.HEADER_STRING;
-
-import java.math.RoundingMode;
-import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/payment")
+@RequestMapping("/payments")
 public class PaymentController {
 
     @Autowired
@@ -80,27 +71,15 @@ public class PaymentController {
     @Autowired
     ProductVariantRepository productVariantRepository;
 
-    // @Autowired
-    // private EmailService emailService;
+    
+    /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * Payment related endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
 
-    // @Autowired
-    // private FraudCheckService fraudCheckService;
-
-    @GetMapping(path = { "/exchange/currency/{country}" })
-    public ResponseEntity<HttpResponse> exchangeCurrency(HttpServletRequest request,
-            @PathVariable("country") String country) throws Exception {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        RetailRate retailRate = wspRequestService.requestRetailRate(country);
-        if (retailRate != null) {
-            response.setData(retailRate);
-            response.setStatus(HttpStatus.OK);
-        } else {
-            response.setStatus(HttpStatus.NOT_FOUND);
-        }
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @GetMapping(path = { "/payment-channel/{id}" })
+    @Operation(summary = "Get payment channel info", description = "To retrieve payment channel info by ID")
+    @GetMapping(path = { "/channel/{id}" })
     public ResponseEntity<HttpResponse> getPaymentChannel(HttpServletRequest request,
             @PathVariable("id") Long id) throws Exception {
 
@@ -164,315 +143,123 @@ public class PaymentController {
 
         return ResponseEntity.status(response.getStatus()).body(response);
     }
-
-    @PostMapping(path = { "/validateBill" })
-    public ResponseEntity<HttpResponse> validateBill(HttpServletRequest request,
-            @RequestParam(required = false) String accountNo,
-            @RequestParam(required = false) String method,
-            @RequestParam(required = true) String productCode) throws Exception {
+    
+    @Operation(summary = "[TEST] Mtrade payment method", description = "To trigger Mtrade payment method")
+    @PostMapping(path = { "/callback-test/{transactionId}" })
+    public ResponseEntity<HttpResponse> callbackTest(HttpServletRequest request,
+            @PathVariable("transactionId") String transactionId,
+            @RequestParam String paymentChannel) throws Exception {
         HttpResponse response = new HttpResponse(request.getRequestURI());
-        ValidateBill validateBill = wspRequestService.requestValidateBill(productCode, accountNo, method);
-        if (validateBill != null) {
-            response.setData(validateBill);
-            response.setStatus(HttpStatus.OK);
-        } else {
-            response.setStatus(HttpStatus.NOT_FOUND);
-        }
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
+        String logprefix = "callbackTest";
 
-    @PostMapping(path = { "/transaction" })
-    public ResponseEntity<HttpResponse> createTransaction(HttpServletRequest request,
-            @Valid @RequestBody Payment payment) throws Exception {
-        String logprefix = request.getRequestURI() + " createTransaction() ";
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String systemTransactionId = null;
+        Optional<Transaction> optionalTransaction = transactionRepository.findByTransactionId(transactionId);
 
-        Double fixFee = payment.getFixFee();
-
-        User user = userService.getUser(request.getHeader(HEADER_STRING));
-
-        if (user == null) {
-            response.setStatus(HttpStatus.NOT_FOUND);
-            response.setMessage("User Not Found");
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "User Not Found");
-
-            return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
-        Transaction transaction = new Transaction();
-
-        // Set default
-        transaction.setDiscountAmount(0.00);
-        transaction.setCoinsRedeemed(0.00);
-        transaction.setIsFraud(false);
-
-        ProductVariant productVariant = null;
-        if (payment.getProductVariantId() != null) {
-            productVariant = productVariantDb.findById(payment.getProductVariantId()).orElse(null);
-            // Check if the exchange rate is found
-            if (productVariant == null) {
-                response.setStatus(HttpStatus.NOT_FOUND, "Product Variant Not Found");
-
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        transaction.getTransactionId(), "Product Variant Not Found : ", transaction);
-
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-            }
-            Product product = productRepository.findById(productVariant.getProductId()).orElse(null);
-            if (product == null) {
-                response.setStatus(HttpStatus.NOT_FOUND, "Product Not Found");
-
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        transaction.getTransactionId(), "Product Not Found : ", transaction);
-
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-            }
-            transaction.setProduct(product);
-            transaction.setProductVariantId(productVariant.getId());
-            Gson gson = new Gson();
-
-            if (productVariant.getVariantType().equals(VariantType.BILLPAYMENT)) {
-
-                // Check retail rate first before save into for bill payment only
-                Country country = countryRepository.findById(product.getCountryCode()).get();
-
-                if (country == null) {
-
-                    response.setStatus(HttpStatus.NOT_FOUND, "Country Not Found");
-
-                    Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                            transaction.getTransactionId(), "Country Not Found : ", transaction);
-
-                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-                }
-
-                RetailRate retailRate = wspRequestService.requestRetailRate(country.getWspCountryCode());
-
-                // Check if the exchange rate is found
-                if (retailRate == null) {
-                    response.setStatus(HttpStatus.NOT_FOUND, "Retail Rate Not Found");
-
-                    Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                            transaction.getTransactionId(), "Retail Rate Not Found : ", transaction);
-
-                }
-
-                transaction.setDenoAmount(payment.getDenoAmount());
-
-                double valueAfterRate = (payment.getDenoAmount() / retailRate.getRate());
-
-                // Round the value to two decimal places
-                double roundedValue = (Math.round(valueAfterRate * 100.0) / 100.0) + fixFee;
-
-                // Create a DecimalFormat object with two decimal places
-                DecimalFormat df = new DecimalFormat("0.00");
-                df.setRoundingMode(RoundingMode.HALF_UP);
-
-                // Format the double as a two-decimal-point Double
-                String formattedValue = df.format(roundedValue);
-
-                // Convert the formatted string back to a Double
-                Double transactionAmount = Double.parseDouble(formattedValue);
-
-                transaction.setTransactionAmount(transactionAmount);
-
-            } else {
-                transaction.setDenoAmount(productVariant.getDeno());
-                Double transactionAmount = productVariant.getPrice() + fixFee;
-
-                transaction.setTransactionAmount(transactionAmount);
-            }
-        }
-
-        transaction.setPaymentMethod(payment.getPaymentMethod());
-        transaction.setAccountNo(payment.getAccountNo());
-        transaction.setUserId(user.getId());
-        transaction.setEmail(user.getEmail());
-        transaction.setName(user.getFullName());
-        transaction.setPhoneNo(user.getPhoneNumber());
-        transaction.setTransactionType(payment.getPaymentEnum());
-        transaction.setStatus("PENDING");
-        transaction.setPaymentStatus(PaymentStatus.PENDING);
-        transaction.setCreatedDate(new Date());
-        transaction.setBillPhoneNumber(payment.getBillPhoneNumber());
-        transaction.setExtra1(payment.getExtra1());
-        transaction.setExtra2(payment.getExtra2());
-        transaction.setExtra3(payment.getExtra3());
-        transaction.setExtra4(payment.getExtra4());
-
-        // Overwrite certain values
-        if (payment.getSpOrderId() != null) {
-            systemTransactionId = StringUtility.CreateRefID("EKP");
-            transaction.setTransactionType(payment.getPaymentEnum()); // ORDER or COUPON
-            transaction.setSpOrderId(payment.getSpOrderId());
-            transaction.setSpInvoiceId(payment.getSpInvoiceId());
-            transaction.setTransactionAmount(payment.transactionAmount);
-
-            // Overwrite status and payment status if FREECOUPON
-            if (productVariant != null && productVariant.getVariantType().equals(VariantType.FREECOUPON)) {
-                transaction.setStatus("PAID");
-                transaction.setPaymentStatus(PaymentStatus.PAID);
-            }
-        } else {
-            systemTransactionId = StringUtility.CreateRefID("EKD");
-        }
-        transaction.setTransactionId(systemTransactionId);
-
-        Transaction savedTransaction = transactionRepository.save(transaction);
-        response.setData(savedTransaction);
-
-        return ResponseEntity.status(HttpStatus.OK).body(response);
-    }
-
-    @GetMapping(path = { "/get/transaction/{transactionId}" })
-    public ResponseEntity<HttpResponse> getByTransactionId(
-            HttpServletRequest request,
-            @PathVariable(name = "transactionId") String transactionId) throws Exception {
-        // String logprefix = request.getRequestURI() + " getByTransactionId() ";
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-
-        Optional<Transaction> transaction = transactionRepository.findByTransactionId(transactionId);
-        if (transaction.isPresent()) {
-            response.setData(transaction.get());
-            response.setStatus(HttpStatus.OK);
-        } else {
+        if (!optionalTransaction.isPresent()) {
             response.setStatus(HttpStatus.NOT_FOUND);
             response.setMessage("Transaction not found");
+            return ResponseEntity.status(response.getStatus()).body(response);
         }
+
+        Transaction transaction = optionalTransaction.get();
+
+        if (!PaymentStatus.PENDING.equals(transaction.getPaymentStatus())
+                || !"PENDING".equals(transaction.getStatus())) {
+            response.setData(transaction);
+            response.setStatus(HttpStatus.OK, "Transaction already processed");
+            return ResponseEntity.status(response.getStatus()).body(response);
+        }
+
+        transaction.setPaymentStatus(PaymentStatus.PAID);
+        transaction.setStatus("PAID");
+
+        ProductVariant productVariant = productVariantDb.findById(transaction.getProductVariantId()).get();
+
+        if (transaction.getTransactionType().equals(TransactionEnum.ORDER)
+                || transaction.getTransactionType().equals(TransactionEnum.COUPON)) {
+            // Symplified order service
+            OrderConfirm res = paymentService.groupOrderUpdateStatus(transaction.getTransactionId(),
+                    transaction.getSpOrderId(), "PAYMENT_CONFIRMED", "", "UAT transaction", paymentChannel);
+
+            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, "callbackTest()",
+                    transaction.getTransactionId(), "groupOrderUpdateStatus response ::" + res);
+        } else {
+
+            MtradePaymentRequest mtradePaymentRequest = new MtradePaymentRequest();
+            mtradePaymentRequest.setSenderMsisdn(transaction.getPhoneNo());
+            mtradePaymentRequest.setProductCode(productVariant.getWspProductCode());
+            mtradePaymentRequest.setProductId(productVariant.getProductId());
+            mtradePaymentRequest.setPayAmount(String.valueOf(transaction.getDenoAmount()));
+            mtradePaymentRequest.setVariantType(productVariant.getVariantType());
+            mtradePaymentRequest.setExtra1(transaction.getExtra1());
+            mtradePaymentRequest.setExtra2(transaction.getExtra2());
+            mtradePaymentRequest.setExtra3(transaction.getExtra3());
+            mtradePaymentRequest.setExtra4(transaction.getExtra4());
+            mtradePaymentRequest.setBillPhoneNumber(transaction.getBillPhoneNumber());
+            mtradePaymentRequest.setRecipientMsisdn(transaction.getAccountNo());
+            mtradePaymentRequest.setAccountNo(transaction.getAccountNo());
+            mtradePaymentRequest.setCustomerTransactionId(transaction.getTransactionId());
+
+            try {
+                MtradePaymentResponse responseData = wspRequestService
+                        .requestPaymentType(mtradePaymentRequest);
+
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "WSP Request : " + responseData);
+
+                transaction.setWspTransactionId(responseData.getSystemTransactionId());
+                transaction.setTransactionErrorCode(responseData.getResponseCode());
+                transaction.setErrorDescription(responseData.getResponseDescription());
+
+                String responseCode = responseData.getResponseCode();
+                if ("000".equals(responseCode)) {
+                    transaction.setStatus("PAID");
+                } else if ("001".equals(responseCode) || "203".equals(responseCode)
+                        || "204".equals(responseCode)) {
+                    transaction.setStatus("PROCESSING");
+                } else {
+                    transaction.setStatus("FAILED");
+                }
+
+                Transaction savedTransaction = transactionRepository.save(transaction);
+                response.setData(savedTransaction);
+                response.setMessage("Success");
+                response.setStatus(HttpStatus.OK);
+
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        savedTransaction.getTransactionId(), "Request Payment Confirmation Request::",
+                        savedTransaction);
+
+                return ResponseEntity.status(HttpStatus.OK).body(response);
+
+            } catch (Exception ex) {
+                transaction.setStatus("FAILED");
+
+                if (ex.getMessage() == null || ex.getMessage().isEmpty())
+                    transaction.setErrorDescription("eByzarr System Failure");
+                else
+                    transaction.setErrorDescription(ex.getMessage());
+
+                Transaction saveTransaction = transactionRepository.save(transaction);
+                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        transaction.getTransactionId(), "Saved with exception : ", saveTransaction);
+                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        transaction.getTransactionId(), "Update WSP Exception ", ex.getMessage());
+                response.setData(saveTransaction);
+                response.setMessage("Failed");
+                return ResponseEntity.status(HttpStatus.OK).body(response);
+            }
+        }
+
+        transactionRepository.save(transaction);
+
+        response.setMessage("Success");
+        response.setData("DONE");
+        response.setStatus(HttpStatus.OK);
 
         return ResponseEntity.status(response.getStatus()).body(response);
     }
-
-    @GetMapping(path = { "/transaction/history" })
-    public ResponseEntity<HttpResponse> getTransactionHistory(HttpServletRequest request,
-            @RequestParam(defaultValue = "ASC", required = false) String sortingOrder,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(defaultValue = "createdDate", required = false) String sortBy,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date from,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date to,
-            @RequestParam(required = false) VariantType variantType,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) PaymentStatus paymentStatus,
-            @RequestParam(required = false) String globalSearch,
-            @RequestParam(required = false) Boolean withRefund) throws Exception {
-        String logprefix = request.getRequestURI() + " get transaction history ";
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-
-        User user = userService.getUser(request.getHeader(HEADER_STRING));
-
-        if (user == null) {
-            response.setStatus(HttpStatus.NOT_FOUND);
-            response.setMessage("User Not Found");
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "User Not Found");
-
-            return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
-        Transaction transaction = new Transaction();
-        transaction.setUserId(user.getId());
-
-        ExampleMatcher matcher = ExampleMatcher
-                .matchingAll()
-                .withIgnoreCase()
-                .withMatcher("userId", new ExampleMatcher.GenericPropertyMatcher().exact())
-                // .withMatcher("status", new ExampleMatcher.GenericPropertyMatcher().exact())
-                .withIgnoreNullValues()
-                .withStringMatcher(ExampleMatcher.StringMatcher.CONTAINING);
-        Example<Transaction> example = Example.of(transaction, matcher);
-
-        Pageable pageable = null;
-        if (sortingOrder.equalsIgnoreCase("desc")) {
-            pageable = PageRequest.of(page, pageSize, Sort.by(sortBy).descending());
-        } else {
-            pageable = PageRequest.of(page, pageSize, Sort.by(sortBy).ascending());
-        }
-        Page<Transaction> transactions = transactionRepository
-                .findAll(
-                        getTransactionHistoryByUser(from, to, example, user.getId(), variantType, status, paymentStatus,
-                                globalSearch, withRefund),
-                        pageable);
-        List<Transaction> tempResultList = transactions.getContent();
-
-        tempResultList = tempResultList.stream()
-                .map(x -> {
-                    if (x.getTransactionType() != null && !x.getTransactionType().equals(TransactionEnum.ORDER)
-                            && x.getProduct() != null) {
-                        x.getProduct().setProductVariant(null);
-                    }
-                    return x;
-                })
-                .collect(Collectors.toList());
-        response.setData(transactions);
-
-        return ResponseEntity.status(HttpStatus.OK).body(response);
-
-    }
-
-    @GetMapping(path = { "/transaction/symplified-history" })
-    public ResponseEntity<?> getSymplifiedTransactionHistory(HttpServletRequest request,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date from,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date to,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) PaymentStatus paymentStatus,
-            @RequestParam(defaultValue = "true") boolean onlyVoucher,
-            @RequestParam(required = false) String search) throws Exception {
-        String logprefix = request.getRequestURI() + " get transaction history ";
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-
-        User user = userService.getUser(request.getHeader(HEADER_STRING));
-
-        if (user == null) {
-            response.setStatus(HttpStatus.NOT_FOUND);
-            response.setMessage("User Not Found");
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "User Not Found");
-
-            return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
-        Transaction transaction = new Transaction();
-        transaction.setUserId(user.getId());
-
-        ExampleMatcher matcher = ExampleMatcher
-                .matchingAll()
-                .withIgnoreCase()
-                .withMatcher("userId", new ExampleMatcher.GenericPropertyMatcher().exact())
-                .withIgnoreNullValues()
-                .withStringMatcher(ExampleMatcher.StringMatcher.CONTAINING);
-        Example<Transaction> example = Example.of(transaction, matcher);
-        List<Transaction> transactions = transactionRepository
-                .findAll(getSymplifiedTransactionHistoryByUser(from, to, example, status, paymentStatus));
-
-        if (!transactions.isEmpty()) {
-            List<String> spOrderIds = transactions.stream()
-                    .map(Transaction::getSpOrderId)
-                    .collect(Collectors.toList());
-
-            try {
-                return symplifiedOrderService.getOrdersByGroupIds(spOrderIds, onlyVoucher, page, pageSize, search);
-
-            } catch (Exception e) {
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Exception");
-                response.setStatus(HttpStatus.OK);
-                response.setData(Collections.emptyList());
-                return ResponseEntity.status(response.getStatus()).body(response);
-            }
-        }
-        response.setData(transactions);
-
-        return ResponseEntity.status(HttpStatus.OK).body(response);
-
-    }
-
+    
+    @Operation(summary = "Mtrade payment method", description = "To trigger Mtrade paymet method")
     @PostMapping(path = { "/callback" })
     public ResponseEntity<HttpResponse> callback(HttpServletRequest request, @RequestHeader Map<String, String> headers,
             @RequestBody MultiValueMap<String, String> formData) throws Exception {
@@ -584,31 +371,6 @@ public class PaymentController {
         }
         transactionRepository.save(t);
 
-        // boolean isFraudCheckPassed = false;
-        // try {
-        //     // isFraudCheckPassed = fraudCheckService.checkFraud2nd(request, t, errorCode, logprefix);
-        // } catch (Exception e) {
-        //     t.setErrorDescription("POTENTIAL FRAUD - 2nd Check: Exception occurred");
-        //     t.setIsFraud(true);
-        //     Transaction savedTransaction = transactionRepository.save(t);
-        //     try {
-        //         // Send fraud alert email
-        //         emailService.sendFraudAlert(savedTransaction);
-        //         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-        //                 "Fraud alert email sent successfully for transaction: "
-        //                         + savedTransaction.getTransactionId());
-        //     } catch (Exception x) {
-        //         Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-        //                 "Failed to send fraud alert email: " + x.getMessage());
-        //     }
-        // }
-
-        // if (!isFraudCheckPassed) {
-        //     Logger.application.warn(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-        //             t.getTransactionId(), "Fraud check failed, skipping WSP/Symplified call.");
-        //     return;
-        // }
-
         // 000 is PAID
         if ("000".equals(errorCode)) {
             Optional<ProductVariant> variantOpt = productVariantDb.findById(t.getProductVariantId());
@@ -636,20 +398,6 @@ public class PaymentController {
                 mtradePaymentRequest.setAccountNo(t.getAccountNo());
                 mtradePaymentRequest.setRecipientMsisdn(t.getAccountNo());
                 mtradePaymentRequest.setCustomerTransactionId(t.getTransactionId());
-
-                // Update discount code status
-                if (t.getDiscount() != null) {
-                    try {
-                        UserUpdateRequest userUpdateRequest = new UserUpdateRequest();
-                        userUpdateRequest.setUserPhoneNumber(t.getPhoneNo());
-                        userUpdateRequest.setDiscountCode(t.getDiscount().getDiscountCode());
-                        userUpdateRequest.setStatus(DiscountUserStatus.REDEEMED);
-                    } catch (Exception ex) {
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                t.getDiscount().getDiscountCode(), "Error update discount code status ",
-                                ex.getMessage());
-                    }
-                }
 
                 try {
                     MtradePaymentResponse responseData = wspRequestService
@@ -766,7 +514,215 @@ public class PaymentController {
         }
     }
 
-    @PostMapping(path = { "/ozopaymanualcallback/{transactionId}" })
+    private String extractParam(MultiValueMap<String, String> formData, String key) {
+        List<String> list = (List<String>) formData.get(key);
+        if (list != null && !list.isEmpty()) {
+            String value = list.get(0);
+            return value;
+        }
+        return null;
+    }
+
+    @Operation(summary = "", description = "To verify tranasaction")
+    @PostMapping("/verify")
+    public ResponseEntity<HttpResponse> verifyTransaction(HttpServletRequest request,
+            @RequestParam String transactionId) {
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+        String logPrefix = "verifyTransaction";
+
+        try {
+            Optional<Transaction> transactionOpt = transactionRepository.findByTransactionId(transactionId);
+
+            if (transactionOpt.isPresent()) {
+                Transaction transaction = transactionOpt.get();
+                Optional<ProductVariant> productVariantOptional = productVariantDb
+                        .findById(transaction.getProductVariantId());
+
+                if (productVariantOptional.isPresent()) {
+                    ProductVariant productVariant = productVariantOptional.get();
+
+                        // Process genuine transaction by making a WSP request
+                        MtradePaymentRequest mtradePaymentRequest = new MtradePaymentRequest();
+                        mtradePaymentRequest.setSenderMsisdn(transaction.getPhoneNo());
+                        mtradePaymentRequest.setProductCode(productVariant.getWspProductCode());
+                        mtradePaymentRequest.setProductId(productVariant.getProductId());
+                        mtradePaymentRequest.setPayAmount(String.valueOf(transaction.getDenoAmount()));
+                        mtradePaymentRequest.setVariantType(productVariant.getVariantType());
+                        mtradePaymentRequest.setExtra1(transaction.getExtra1());
+                        mtradePaymentRequest.setExtra2(transaction.getExtra2());
+                        mtradePaymentRequest.setExtra3(transaction.getExtra3());
+                        mtradePaymentRequest.setExtra4(transaction.getExtra4());
+                        mtradePaymentRequest.setBillPhoneNumber(transaction.getBillPhoneNumber());
+                        mtradePaymentRequest.setAccountNo(transaction.getAccountNo());
+                        mtradePaymentRequest.setRecipientMsisdn(transaction.getAccountNo());
+                        mtradePaymentRequest.setCustomerTransactionId(transaction.getTransactionId());
+
+                        MtradePaymentResponse responseData;
+                        try {
+                            responseData = wspRequestService
+                                    .requestPaymentType(mtradePaymentRequest);
+                            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                                    "WSP Request : " + responseData);
+
+                            transaction.setWspTransactionId(responseData.getSystemTransactionId());
+                            transaction.setTransactionErrorCode(responseData.getResponseCode());
+                            transaction.setErrorDescription(responseData.getResponseDescription());
+
+                            String responseCode = responseData.getResponseCode();
+                            if ("000".equals(responseCode)) {
+                                transaction.setStatus("PAID");
+
+                            } else if ("001".equals(responseCode) || "203".equals(responseCode)
+                                    || "204".equals(responseCode)) {
+                                transaction.setStatus("PROCESSING");
+                            } else {
+                                transaction.setStatus("FAILED");
+                            }
+
+                            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                                    transaction.getTransactionId(), " Request Payment Confirmation Request::");
+
+                        } catch (Exception e) {
+                            transaction.setStatus("FAILED");
+
+                            if (e.getMessage() == null || e.getMessage().isEmpty())
+                                transaction.setErrorDescription("eByzarr System Failure");
+                            else
+                                transaction.setErrorDescription(e.getMessage());
+
+                            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                                    transaction.getTransactionId(), "Saved with exception : ", transaction);
+                            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                                    transaction.getTransactionId(), "Update WSP Exception ", e.getMessage());
+                        }
+                        Transaction savedTransaction = transactionRepository.save(transaction);
+                        response.setStatus(HttpStatus.OK);
+                        response.setData(savedTransaction);
+                } else {
+                    response.setStatus(HttpStatus.NOT_FOUND,
+                            "Product Variant not found: " + transaction.getProductVariantId());
+                }
+
+            } else {
+                response.setStatus(HttpStatus.NOT_FOUND, "Transaction not found: " + transactionId);
+            }
+
+        } catch (Exception e) {
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix, "Exception: ",
+                    e.getMessage());
+        }
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    /* @Operation(summary = "Get symplified history", description = "To retrieve sympflied history from order service")
+    @GetMapping(path = { "/symplified-history" })
+    public ResponseEntity<?> getSymplifiedTransactionHistory(HttpServletRequest request,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date from,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") Date to,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) PaymentStatus paymentStatus,
+            @RequestParam(defaultValue = "true") boolean onlyVoucher,
+            @RequestParam(required = false) String search) throws Exception {
+        String logprefix = request.getRequestURI() + " get transaction history ";
+
+        HttpResponse response = new HttpResponse(request.getRequestURI());
+
+        User user = userService.getUser(request.getHeader(HEADER_STRING));
+
+        if (user == null) {
+            response.setStatus(HttpStatus.NOT_FOUND);
+            response.setMessage("User Not Found");
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                    "User Not Found");
+
+            return ResponseEntity.status(response.getStatus()).body(response);
+        }
+
+        Transaction transaction = new Transaction();
+        transaction.setUserId(user.getId());
+
+        ExampleMatcher matcher = ExampleMatcher
+                .matchingAll()
+                .withIgnoreCase()
+                .withMatcher("userId", new ExampleMatcher.GenericPropertyMatcher().exact())
+                .withIgnoreNullValues()
+                .withStringMatcher(ExampleMatcher.StringMatcher.CONTAINING);
+        Example<Transaction> example = Example.of(transaction, matcher);
+        List<Transaction> transactions = transactionRepository
+                .findAll(getSymplifiedTransactionHistoryByUser(from, to, example, status, paymentStatus));
+
+        if (!transactions.isEmpty()) {
+            List<String> spOrderIds = transactions.stream()
+                    .map(Transaction::getSpOrderId)
+                    .collect(Collectors.toList());
+
+            try {
+                return symplifiedOrderService.getOrdersByGroupIds(spOrderIds, onlyVoucher, page, pageSize, search);
+
+            } catch (Exception e) {
+                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "Exception");
+                response.setStatus(HttpStatus.OK);
+                response.setData(Collections.emptyList());
+                return ResponseEntity.status(response.getStatus()).body(response);
+            }
+        }
+        response.setData(transactions);
+
+        return ResponseEntity.status(HttpStatus.OK).body(response);
+
+    } */
+    
+    public static Specification<Transaction> getSymplifiedTransactionHistoryByUser(
+            Date from, Date to, Example<Transaction> example, String status,
+            PaymentStatus paymentStatus) {
+        return (root, query, builder) -> {
+            final List<Predicate> predicates = new ArrayList<>();
+
+            if (from != null && to != null) {
+
+                Calendar calendar = Calendar.getInstance();
+                calendar.setTime(to);
+
+                // Add one day to the current date
+                calendar.add(Calendar.DAY_OF_MONTH, 1);
+
+                // Get the updated date
+                Date updatedDate = calendar.getTime();
+                predicates.add(builder.greaterThanOrEqualTo(root.get("createdDate"), from));
+                predicates.add(builder.lessThanOrEqualTo(root.get("createdDate"), updatedDate));
+            }
+
+            if (status != null) {
+                predicates.add(builder.equal(root.get("status"), status));
+            }
+
+            if (paymentStatus != null) {
+                predicates.add(builder.equal(root.get("paymentStatus"), paymentStatus));
+            }
+
+            // Get records with spOrderId
+            predicates.add(builder.isNotNull(root.get("spOrderId")));
+
+            predicates.add(builder.equal(root.get("transactionType"), TransactionEnum.COUPON));
+
+            // Exclude records where both status and paymentStatus are PENDING
+            predicates.add(builder.not(
+                    builder.and(
+                            builder.equal(root.get("status"), "PENDING"),
+                            builder.equal(root.get("paymentStatus"), PaymentStatus.PENDING))));
+
+            predicates.add(QueryByExamplePredicateBuilder.getPredicate(root, builder, example));
+
+            return builder.and(predicates.toArray(new Predicate[predicates.size()]));
+        };
+    }
+    
+    @Operation(summary = "Ozopay manual trigger callback", description = "To manually trigger ozopay callback")
+    @PostMapping(path = { "/ozopay/manual-callback/{transactionId}" })
     public ResponseEntity<HttpResponse> manualCallback(HttpServletRequest request,
             @PathVariable("transactionId") String transactionId,
             @RequestParam(required = true) String errorCode,
@@ -951,6 +907,7 @@ public class PaymentController {
 
     }
 
+    @Operation(summary = "MMpay payment method", description = "To trigger MMPay payment method")
     @PostMapping(path = { "/mmpayment/{transactionId}" })
     public ResponseEntity<HttpResponse> mmPaymentTransaction(HttpServletRequest request,
             @PathVariable("transactionId") String transactionId) throws Exception {
@@ -981,8 +938,15 @@ public class PaymentController {
 
         return ResponseEntity.status(response.getStatus()).body(response);
     }
+    
+     /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * OTP related endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
 
-    @PostMapping(path = { "/validateOtp/{transactionId}" })
+    @Operation(summary = "Validate MMpay OTP", description = "Validate OTP related to MMpay payment method")
+    @PostMapping(path = { "/otp/validate/{transactionId}" })
     public ResponseEntity<HttpResponse> validateOtp(HttpServletRequest request,
             @PathVariable("transactionId") String transactionId, @RequestParam String otpNo) throws Exception {
         HttpResponse response = new HttpResponse(request.getRequestURI());
@@ -1149,7 +1113,8 @@ public class PaymentController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @PostMapping(path = { "/resendOtp/{transactionId}" })
+    @Operation(summary = "Resend MMPay OTP", description = "Resend OTP related MMpay payment method")
+    @PostMapping(path = { "/otp/resend/{transactionId}" })
     public ResponseEntity<HttpResponse> resendOtp(HttpServletRequest request,
             @PathVariable("transactionId") String transactionId) throws Exception {
         HttpResponse response = new HttpResponse(request.getRequestURI());
@@ -1175,426 +1140,50 @@ public class PaymentController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @PostMapping(path = { "/callback-test/{transactionId}" })
-    public ResponseEntity<HttpResponse> callbackTest(HttpServletRequest request,
-            @PathVariable("transactionId") String transactionId,
-            @RequestParam String paymentChannel) throws Exception {
+     /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * Other endpoints
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
+    
+    @Operation(summary = "Get WSP exhange currency", description = "To retrieve exchange currency from WSP by country")
+    @GetMapping(path = { "/exchange/currency/{country}" })
+    public ResponseEntity<HttpResponse> exchangeCurrency(HttpServletRequest request,
+            @PathVariable("country") String country) throws Exception {
         HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "callbackTest";
-
-        Optional<Transaction> optionalTransaction = transactionRepository.findByTransactionId(transactionId);
-
-        if (!optionalTransaction.isPresent()) {
-            response.setStatus(HttpStatus.NOT_FOUND);
-            response.setMessage("Transaction not found");
-            return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
-        Transaction transaction = optionalTransaction.get();
-
-        if (!PaymentStatus.PENDING.equals(transaction.getPaymentStatus())
-                || !"PENDING".equals(transaction.getStatus())) {
-            response.setData(transaction);
-            response.setStatus(HttpStatus.OK, "Transaction already processed");
-            return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
-        transaction.setPaymentStatus(PaymentStatus.PAID);
-        transaction.setStatus("PAID");
-
-        ProductVariant productVariant = productVariantDb.findById(transaction.getProductVariantId()).get();
-
-        if (transaction.getTransactionType().equals(TransactionEnum.ORDER)
-                || transaction.getTransactionType().equals(TransactionEnum.COUPON)) {
-            // Symplified order service
-            OrderConfirm res = paymentService.groupOrderUpdateStatus(transaction.getTransactionId(),
-                    transaction.getSpOrderId(), "PAYMENT_CONFIRMED", "", "UAT transaction", paymentChannel);
-
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, "callbackTest()",
-                    transaction.getTransactionId(), "groupOrderUpdateStatus response ::" + res);
+        RetailRate retailRate = wspRequestService.requestRetailRate(country);
+        if (retailRate != null) {
+            response.setData(retailRate);
+            response.setStatus(HttpStatus.OK);
         } else {
-
-            MtradePaymentRequest mtradePaymentRequest = new MtradePaymentRequest();
-            mtradePaymentRequest.setSenderMsisdn(transaction.getPhoneNo());
-            mtradePaymentRequest.setProductCode(productVariant.getWspProductCode());
-            mtradePaymentRequest.setProductId(productVariant.getProductId());
-            mtradePaymentRequest.setPayAmount(String.valueOf(transaction.getDenoAmount()));
-            mtradePaymentRequest.setVariantType(productVariant.getVariantType());
-            mtradePaymentRequest.setExtra1(transaction.getExtra1());
-            mtradePaymentRequest.setExtra2(transaction.getExtra2());
-            mtradePaymentRequest.setExtra3(transaction.getExtra3());
-            mtradePaymentRequest.setExtra4(transaction.getExtra4());
-            mtradePaymentRequest.setBillPhoneNumber(transaction.getBillPhoneNumber());
-            mtradePaymentRequest.setRecipientMsisdn(transaction.getAccountNo());
-            mtradePaymentRequest.setAccountNo(transaction.getAccountNo());
-            mtradePaymentRequest.setCustomerTransactionId(transaction.getTransactionId());
-
-            // Update discount code status
-            if (transaction.getDiscount() != null) {
-                try {
-                    UserUpdateRequest userUpdateRequest = new UserUpdateRequest();
-                    userUpdateRequest.setUserPhoneNumber(transaction.getPhoneNo());
-                    userUpdateRequest.setDiscountCode(transaction.getDiscount().getDiscountCode());
-                    userUpdateRequest.setStatus(DiscountUserStatus.REDEEMED);
-                } catch (Exception ex) {
-                    Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                            transaction.getDiscount().getDiscountCode(), "Error update discount code status ",
-                            ex.getMessage());
-                }
-            }
-
-            try {
-                MtradePaymentResponse responseData = wspRequestService
-                        .requestPaymentType(mtradePaymentRequest);
-
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "WSP Request : " + responseData);
-
-                transaction.setWspTransactionId(responseData.getSystemTransactionId());
-                transaction.setTransactionErrorCode(responseData.getResponseCode());
-                transaction.setErrorDescription(responseData.getResponseDescription());
-
-                String responseCode = responseData.getResponseCode();
-                if ("000".equals(responseCode)) {
-                    transaction.setStatus("PAID");
-                } else if ("001".equals(responseCode) || "203".equals(responseCode)
-                        || "204".equals(responseCode)) {
-                    transaction.setStatus("PROCESSING");
-                } else {
-                    transaction.setStatus("FAILED");
-                }
-
-                Transaction savedTransaction = transactionRepository.save(transaction);
-                response.setData(savedTransaction);
-                response.setMessage("Success");
-                response.setStatus(HttpStatus.OK);
-
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        savedTransaction.getTransactionId(), "Request Payment Confirmation Request::",
-                        savedTransaction);
-
-                return ResponseEntity.status(HttpStatus.OK).body(response);
-
-            } catch (Exception ex) {
-                transaction.setStatus("FAILED");
-
-                if (ex.getMessage() == null || ex.getMessage().isEmpty())
-                    transaction.setErrorDescription("eByzarr System Failure");
-                else
-                    transaction.setErrorDescription(ex.getMessage());
-
-                Transaction saveTransaction = transactionRepository.save(transaction);
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        transaction.getTransactionId(), "Saved with exception : ", saveTransaction);
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        transaction.getTransactionId(), "Update WSP Exception ", ex.getMessage());
-                response.setData(saveTransaction);
-                response.setMessage("Failed");
-                return ResponseEntity.status(HttpStatus.OK).body(response);
-            }
+            response.setStatus(HttpStatus.NOT_FOUND);
         }
-
-        transactionRepository.save(transaction);
-
-        response.setMessage("Success");
-        response.setData("DONE");
-        response.setStatus(HttpStatus.OK);
-
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    public static Specification<Transaction> getTransactionHistoryByUser(
-            Date from, Date to, Example<Transaction> example, String userId, VariantType variantType, String status,
-            PaymentStatus paymentStatus, String globalSearch, Boolean withRefund) {
-        return (root, query, builder) -> {
-            final List<Predicate> predicates = new ArrayList<>();
-
-            if (from != null && to != null) {
-
-                Calendar calendar = Calendar.getInstance();
-                calendar.setTime(to);
-
-                // Add one day to the current date
-                calendar.add(Calendar.DAY_OF_MONTH, 1);
-
-                // Get the updated date
-                Date updatedDate = calendar.getTime();
-                predicates.add(builder.greaterThanOrEqualTo(root.get("createdDate"), from));
-                predicates.add(builder.lessThanOrEqualTo(root.get("createdDate"), updatedDate));
-            }
-
-            if (variantType != null) {
-                Join<Transaction, ProductVariant> productVariant = root.join("productVariant");
-                predicates.add(builder.equal(productVariant.get("variantType"), variantType));
-            }
-
-            if (status != null) {
-                predicates.add(builder.equal(root.get("status"), status));
-            }
-
-            if (paymentStatus != null) {
-                if (withRefund) {
-                    predicates.add(
-                            builder.or(
-                                    builder.equal(root.get("paymentStatus"), PaymentStatus.REFUNDED),
-                                    builder.equal(root.get("paymentStatus"), paymentStatus)));
-                } else
-                    predicates.add(builder.equal(root.get("paymentStatus"), paymentStatus));
-            }
-
-            if (globalSearch != null) {
-                Join<Transaction, Product> product = root.join("product");
-                // Predicate for Employee Projects data
-                predicates.add(builder.or(
-                        builder.like(product.get("productName"), "%" + globalSearch + "%"),
-                        builder.like(root.get("accountNo"), "%" + globalSearch + "%")));
-            }
-
-            // Exclude records where both status and paymentStatus are PENDING
-            predicates.add(builder.not(
-                    builder.and(
-                            builder.equal(root.get("status"), "PENDING"),
-                            builder.equal(root.get("paymentStatus"), PaymentStatus.PENDING))));
-
-            predicates.add(QueryByExamplePredicateBuilder.getPredicate(root, builder, example));
-
-            return builder.and(predicates.toArray(new Predicate[predicates.size()]));
-        };
-    }
-
-    public static Specification<Transaction> getTransactionVouchersByUser(
-            Date from, Date to, Example<Transaction> example, String userId, String search, String variantCategory) {
-        return (root, query, builder) -> {
-            final List<Predicate> predicates = new ArrayList<>();
-            Join<Transaction, ProductVariant> productVariant = root.join("productVariant");
-            Join<Transaction, Product> product = root.join("product");
-
-            if (from != null && to != null) {
-
-                Calendar calendar = Calendar.getInstance();
-                calendar.setTime(to);
-
-                // Add one day to the current date
-                calendar.add(Calendar.DAY_OF_MONTH, 1);
-
-                // Get the updated date
-                Date updatedDate = calendar.getTime();
-                predicates.add(builder.greaterThanOrEqualTo(root.get("createdDate"), from));
-                predicates.add(builder.lessThanOrEqualTo(root.get("createdDate"), updatedDate));
-            }
-
-            // Filter variant type by voucher
-            predicates.add(builder.equal(productVariant.get("variantType"), VariantType.VOUCHER));
-
-            if (variantCategory != null && !"PREPAID".equals(variantCategory) && !"GAMES".equals(variantCategory)) {
-                predicates.add(builder.equal(productVariant.get("category"), variantCategory));
-            }
-
-            if (variantCategory != null && ("PREPAID".equals(variantCategory) || "GAMES".equals(variantCategory))) {
-                predicates.add(builder.equal(product.get("productType"), variantCategory));
-            }
-
-            // Filter status by paid
-            predicates.add(builder.equal(root.get("status"), "PAID"));
-            predicates.add(builder.equal(root.get("paymentStatus"), PaymentStatus.PAID));
-
-            if (search != null) {
-                predicates.add(builder.or(
-                        builder.like(product.get("productName"), "%" + search + "%"),
-                        builder.like(productVariant.get("variantName"), "%" + search + "%")));
-            }
-
-            predicates.add(QueryByExamplePredicateBuilder.getPredicate(root, builder, example));
-
-            return builder.and(predicates.toArray(new Predicate[predicates.size()]));
-        };
-    }
-
-    public static Specification<Transaction> getSymplifiedTransactionHistoryByUser(
-            Date from, Date to, Example<Transaction> example, String status,
-            PaymentStatus paymentStatus) {
-        return (root, query, builder) -> {
-            final List<Predicate> predicates = new ArrayList<>();
-
-            if (from != null && to != null) {
-
-                Calendar calendar = Calendar.getInstance();
-                calendar.setTime(to);
-
-                // Add one day to the current date
-                calendar.add(Calendar.DAY_OF_MONTH, 1);
-
-                // Get the updated date
-                Date updatedDate = calendar.getTime();
-                predicates.add(builder.greaterThanOrEqualTo(root.get("createdDate"), from));
-                predicates.add(builder.lessThanOrEqualTo(root.get("createdDate"), updatedDate));
-            }
-
-            if (status != null) {
-                predicates.add(builder.equal(root.get("status"), status));
-            }
-
-            if (paymentStatus != null) {
-                predicates.add(builder.equal(root.get("paymentStatus"), paymentStatus));
-            }
-
-            // Get records with spOrderId
-            predicates.add(builder.isNotNull(root.get("spOrderId")));
-
-            predicates.add(builder.equal(root.get("transactionType"), TransactionEnum.COUPON));
-
-            // Exclude records where both status and paymentStatus are PENDING
-            predicates.add(builder.not(
-                    builder.and(
-                            builder.equal(root.get("status"), "PENDING"),
-                            builder.equal(root.get("paymentStatus"), PaymentStatus.PENDING))));
-
-            predicates.add(QueryByExamplePredicateBuilder.getPredicate(root, builder, example));
-
-            return builder.and(predicates.toArray(new Predicate[predicates.size()]));
-        };
-    }
-
-    @GetMapping("/{transactionId}/status")
-    public ResponseEntity<HttpResponse> getStatusByTransactionId(HttpServletRequest request,
-            @PathVariable String transactionId) {
+    @Operation(summary = "Validate bill at WSP", description = "To validate bill at WSP")
+    @PostMapping(path = { "/validate-bill" })
+    public ResponseEntity<HttpResponse> validateBill(HttpServletRequest request,
+            @RequestParam(required = false) String accountNo,
+            @RequestParam(required = false) String method,
+            @RequestParam(required = true) String productCode) throws Exception {
         HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = request.getRequestURI() + " getStatusByTransactionId() ";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "transactionId: ",
-                transactionId);
-        try {
-            Optional<Transaction> transactionOpt = transactionRepository.findByTransactionId(transactionId);
-            Transaction transaction = transactionOpt.get();
-            if (transaction != null) {
-                response.setStatus(HttpStatus.OK);
-                response.setData(transaction.getStatus());
-            } else {
-                response.setStatus(HttpStatus.NOT_FOUND);
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "transactionId: ",
-                        transactionId,
-                        "NOT_FOUND");
-            }
-        } catch (Exception e) {
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "Exception: ",
-                    e.getMessage());
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @PostMapping("/verify")
-    public ResponseEntity<HttpResponse> verifyTransaction(HttpServletRequest request,
-            @RequestParam String transactionId, @RequestParam boolean isFraud) {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logPrefix = "verifyTransaction";
-
-        try {
-            Optional<Transaction> transactionOpt = transactionRepository.findByTransactionId(transactionId);
-
-            if (transactionOpt.isPresent()) {
-                Transaction transaction = transactionOpt.get();
-                Optional<ProductVariant> productVariantOptional = productVariantDb
-                        .findById(transaction.getProductVariantId());
-
-                if (productVariantOptional.isPresent()) {
-                    ProductVariant productVariant = productVariantOptional.get();
-
-                    if (isFraud) {
-                        if (transaction.getPaymentStatus().equals(PaymentStatus.PAID)) {
-                            // Process refund for fraudulent transaction
-                            transaction.setPaymentStatus(PaymentStatus.PENDING_REFUND);
-                            transaction = transactionRepository.save(transaction);
-                        }
-                        response.setStatus(HttpStatus.OK);
-                        response.setData(transaction);
-                    } else {
-                        // Set isFraud to false
-                        transaction.setIsFraud(false);
-
-                        // Process genuine transaction by making a WSP request
-                        MtradePaymentRequest mtradePaymentRequest = new MtradePaymentRequest();
-                        mtradePaymentRequest.setSenderMsisdn(transaction.getPhoneNo());
-                        mtradePaymentRequest.setProductCode(productVariant.getWspProductCode());
-                        mtradePaymentRequest.setProductId(productVariant.getProductId());
-                        mtradePaymentRequest.setPayAmount(String.valueOf(transaction.getDenoAmount()));
-                        mtradePaymentRequest.setVariantType(productVariant.getVariantType());
-                        mtradePaymentRequest.setExtra1(transaction.getExtra1());
-                        mtradePaymentRequest.setExtra2(transaction.getExtra2());
-                        mtradePaymentRequest.setExtra3(transaction.getExtra3());
-                        mtradePaymentRequest.setExtra4(transaction.getExtra4());
-                        mtradePaymentRequest.setBillPhoneNumber(transaction.getBillPhoneNumber());
-                        mtradePaymentRequest.setAccountNo(transaction.getAccountNo());
-                        mtradePaymentRequest.setRecipientMsisdn(transaction.getAccountNo());
-                        mtradePaymentRequest.setCustomerTransactionId(transaction.getTransactionId());
-
-                        MtradePaymentResponse responseData;
-                        try {
-                            responseData = wspRequestService
-                                    .requestPaymentType(mtradePaymentRequest);
-                            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                    "WSP Request : " + responseData);
-
-                            transaction.setWspTransactionId(responseData.getSystemTransactionId());
-                            transaction.setTransactionErrorCode(responseData.getResponseCode());
-                            transaction.setErrorDescription(responseData.getResponseDescription());
-
-                            String responseCode = responseData.getResponseCode();
-                            if ("000".equals(responseCode)) {
-                                transaction.setStatus("PAID");
-
-                            } else if ("001".equals(responseCode) || "203".equals(responseCode)
-                                    || "204".equals(responseCode)) {
-                                transaction.setStatus("PROCESSING");
-                            } else {
-                                transaction.setStatus("FAILED");
-                            }
-
-                            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                    transaction.getTransactionId(), " Request Payment Confirmation Request::");
-
-                        } catch (Exception e) {
-                            transaction.setStatus("FAILED");
-
-                            if (e.getMessage() == null || e.getMessage().isEmpty())
-                                transaction.setErrorDescription("eByzarr System Failure");
-                            else
-                                transaction.setErrorDescription(e.getMessage());
-
-                            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                    transaction.getTransactionId(), "Saved with exception : ", transaction);
-                            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                    transaction.getTransactionId(), "Update WSP Exception ", e.getMessage());
-                        }
-                        Transaction savedTransaction = transactionRepository.save(transaction);
-                        response.setStatus(HttpStatus.OK);
-                        response.setData(savedTransaction);
-
-                    }
-                } else {
-                    response.setStatus(HttpStatus.NOT_FOUND,
-                            "Product Variant not found: " + transaction.getProductVariantId());
-                }
-
-            } else {
-                response.setStatus(HttpStatus.NOT_FOUND, "Transaction not found: " + transactionId);
-            }
-
-        } catch (Exception e) {
-            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix, "Exception: ",
-                    e.getMessage());
+        ValidateBill validateBill = wspRequestService.requestValidateBill(productCode, accountNo, method);
+        if (validateBill != null) {
+            response.setData(validateBill);
+            response.setStatus(HttpStatus.OK);
+        } else {
+            response.setStatus(HttpStatus.NOT_FOUND);
         }
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    private String extractParam(MultiValueMap<String, String> formData, String key) {
-        List<String> list = (List<String>) formData.get(key);
-        if (list != null && !list.isEmpty()) {
-            String value = list.get(0);
-            return value;
-        }
-        return null;
-    }
+
+      /**
+     * ------------------------------------------------------------------------------------------------------------------------------------------------
+     * Private models 
+     * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     */
 
     @Getter
     @Setter
