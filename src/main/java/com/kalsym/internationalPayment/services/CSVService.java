@@ -1,13 +1,13 @@
 package com.kalsym.internationalPayment.services;
 
+
+import com.kalsym.internationalPayment.model.Product;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.kalsym.internationalPayment.helper.CSVHelper;
-import com.kalsym.internationalPayment.model.Product;
 import com.kalsym.internationalPayment.model.ProductVariant;
-import com.kalsym.internationalPayment.model.ServiceId;
 import com.kalsym.internationalPayment.repositories.ProductVariantRepository;
 
 import java.io.ByteArrayInputStream;
@@ -25,9 +25,6 @@ public class CSVService {
 
     @Autowired
     CSVHelper csvHelper;
-
-    @Autowired
-    LoyaltyService loyaltyService;
 
     public List<ProductVariant> convertToList(MultipartFile file, String type) {
         try {
@@ -67,16 +64,13 @@ public class CSVService {
         final PrintWriter writer = new PrintWriter(out);
 
         // CSV Header
-        writer.println("Product Name,Country Code,Variant ID,Variant Name,Variant Type,Variant Price,Variant Deno,Loyalty Service ID,Referral Service ID");
+        writer.println("Product Name,Country Code,Variant ID,Variant Name,Variant Type,Variant Price,Variant Deno");
 
         // CSV Rows
         for (Product product : products) {
             if (product.getProductVariant() != null && !product.getProductVariant().isEmpty()) {
                 // Iterate over each product variant
                 for (ProductVariant variant : product.getProductVariant()) {
-
-                    // Get the values for each service id type
-                    ServiceId serviceId = loyaltyService.getServiceIdValues(variant.getServiceId());
 
                     writer.println(String.format("%s,%s,%d,\"%s\",%s,%.2f,%.2f,%s,%s",
                             product.getProductName(),
@@ -85,9 +79,7 @@ public class CSVService {
                             variant.getVariantName(),  // Wrap in quotes to handle commas
                             variant.getVariantType(),
                             Optional.ofNullable(variant.getPrice()).orElse(0.00),  // Handle null value for price
-                            Optional.ofNullable(variant.getDeno()).orElse(0.00),   // Handle null value for deno
-                            serviceId.getLoyalty(),
-                            serviceId.getReferral()
+                            Optional.ofNullable(variant.getDeno()).orElse(0.00)   // Handle null value for deno
                     ));
                 }
             }

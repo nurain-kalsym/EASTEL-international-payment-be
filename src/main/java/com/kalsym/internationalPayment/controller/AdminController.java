@@ -60,12 +60,6 @@ public class AdminController {
     ProductVariantService productVariantService;
 
     @Autowired
-    ProductDiscountService productDiscountService;
-
-    @Autowired
-    DiscountEventService discountEventService;
-
-    @Autowired
     ProductCategoryService productCategoryService;
 
     @Autowired
@@ -424,125 +418,7 @@ public class AdminController {
         return ResponseEntity.status(response.getStatus()).body(response);
 
     }
-
-    @Operation(summary = "Create product discount", description = "Note: To create product discount do not send the id of discount event request object ; do not send the id and discountid of product disocunt request object.")
-    @PostMapping(path = { "/product-discount" })
-    public ResponseEntity<HttpResponse> postProductDiscount(
-            HttpServletRequest request,
-            @RequestBody DiscountEventRequest discountEventRequest) {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "postProductDiscount";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Discount Create Body" + discountEventRequest);
-        try {
-            DiscountEvent body = DiscountEvent.castReference(discountEventRequest);
-            DiscountEvent data = discountEventService.createDiscountEvent(body);
-
-            List<ProductDiscount> bodyProductDiscount = discountEventRequest.getProductDiscount().stream()
-                    .map((ProductDiscountRequest x) -> {
-
-                        ProductDiscount productDiscountBody = ProductDiscount.castReference(x);
-                        productDiscountBody.setDiscountId(data.getId());
-                        ProductDiscount dataProductDiscount = productDiscountService
-                                .createProductDiscount(productDiscountBody);
-                        return dataProductDiscount;
-                    })
-                    .collect(Collectors.toList());
-
-            data.setProductDiscount(bodyProductDiscount);
-            response.setData(data);
-            response.setStatus(HttpStatus.OK);
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("ERRROR:::" + e.getMessage());
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-
-    }
-
-    @Operation(summary = "Edit product discount", description = "Edit product discount, please include the id of object DiscountEventRequest and also the id of ProductDiscountRequest")
-    @PutMapping(path = { "/product-discount/{discounteventId}" })
-    public ResponseEntity<HttpResponse> putProductDiscount(
-            HttpServletRequest request,
-            @RequestBody DiscountEventRequest discountEventRequest,
-            @PathVariable Integer discounteventId)
-            throws Exception {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "putProductDiscount";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Discount Event Id" + discounteventId);
-        try {
-
-            discountEventRequest.setId(discounteventId);
-            DiscountEvent body = DiscountEvent.castReference(discountEventRequest);
-            DiscountEvent data = discountEventService.updateDiscountEvent(discounteventId, body);
-
-            List<ProductDiscount> bodyProductDiscount = discountEventRequest.getProductDiscount().stream()
-                    .map((ProductDiscountRequest x) -> {
-
-                        ProductDiscount productDiscountBody = ProductDiscount.castReference(x);
-                        productDiscountBody.setDiscountId(data.getId());
-                        ProductDiscount dataProductDiscount = productDiscountService
-                                .updateProductDiscount(productDiscountBody.getId(), productDiscountBody);
-
-                        return dataProductDiscount;
-                    })
-                    .collect(Collectors.toList());
-            data.setProductDiscount(bodyProductDiscount);
-
-            response.setStatus(HttpStatus.OK);
-            response.setData(data);
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("ERRROR:::" + e.getMessage());
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-
-    }
-
-    @Operation(summary = "Get all discount event", description = "The list of discount event.")
-    @GetMapping(path = { "/discount-event" })
-    public ResponseEntity<HttpResponse> getDiscountEvent(
-            HttpServletRequest request,
-            @RequestParam(defaultValue = "startDate", required = false) String sortBy,
-            @RequestParam(defaultValue = "DESC", required = false) Sort.Direction sortingOrder,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int pageSize)
-            throws Exception {
-
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        String logprefix = "getDiscountEvent";
-        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "Requested");
-        try {
-
-            Page<DiscountEvent> data = discountEventService.getAllDiscountEvent(page, pageSize, sortBy, sortingOrder);
-
-            response.setStatus(HttpStatus.OK);
-            response.setData(data);
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("ERRROR:::" + e.getMessage());
-            response.setStatus(HttpStatus.BAD_REQUEST);
-            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                    "Exception " + e.getMessage());
-
-        }
-
-        return ResponseEntity.status(response.getStatus()).body(response);
-
-    }
-
+    
     @Operation(summary = "Create or edit product category", description = "Please include the id of object Product Category for edit purpose. ")
     @PostMapping(path = { "/product-category" })
     public ResponseEntity<HttpResponse> postProductCategory(

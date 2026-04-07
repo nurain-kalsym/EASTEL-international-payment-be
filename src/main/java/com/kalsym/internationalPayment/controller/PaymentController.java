@@ -6,7 +6,6 @@ import com.kalsym.internationalPayment.InternationalPaymentApplication;
 import com.kalsym.internationalPayment.model.*;
 import com.kalsym.internationalPayment.model.dao.*;
 import com.kalsym.internationalPayment.model.dao.Order.OrderConfirm;
-import com.kalsym.internationalPayment.model.dao.loyalty.OverallCoinsData;
 import com.kalsym.internationalPayment.model.enums.DiscountUserStatus;
 import com.kalsym.internationalPayment.model.enums.PaymentStatus;
 import com.kalsym.internationalPayment.model.enums.TransactionEnum;
@@ -29,8 +28,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.RestClientException;
 
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
@@ -72,22 +69,7 @@ public class PaymentController {
     ProductVariantRepository productVariantDb;
 
     @Autowired
-    DiscountRepository discountRepository;
-
-    @Autowired
-    DiscountUserService discountUserService;
-
-    @Autowired
     SymplifiedOrderService symplifiedOrderService;
-
-    @Autowired
-    LoyaltyService loyaltyService;
-
-    @Autowired
-    DiscountController discountController;
-
-    @Autowired
-    CampaignService campaignService;
 
     @Autowired
     PaymentChannelRepository paymentChannelRepository;
@@ -115,34 +97,6 @@ public class PaymentController {
         } else {
             response.setStatus(HttpStatus.NOT_FOUND);
         }
-        return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @GetMapping(path = { "/available-coins/{phone}" })
-    public ResponseEntity<HttpResponse> getAvailableCoins(HttpServletRequest request,
-            @PathVariable("phone") String phone) throws Exception {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-        Gson gson = new Gson();
-
-        try {
-            // Call the service to fetch available coins
-            HttpResponse httpResponse = loyaltyService.getAvailableCoins(phone);
-            OverallCoinsData overallCoinsData = loyaltyService.getDataAsOverallCoinsData(httpResponse.getData());
-
-            response.setData(overallCoinsData);
-            response.setStatus(HttpStatus.OK);
-        } catch (HttpStatusCodeException e) {
-            HttpResponse requestResponse = gson.fromJson(e.getResponseBodyAsString(),
-                    HttpResponse.class);
-
-            // Set the status and extract the message from the error response
-            response.setStatus(e.getStatusCode());
-            response.setMessage(requestResponse.getMessage());
-        } catch (RestClientException e) {
-            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
-            response.setMessage("An error occurred while processing the request.");
-        }
-
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
@@ -322,137 +276,11 @@ public class PaymentController {
                 // Convert the formatted string back to a Double
                 Double transactionAmount = Double.parseDouble(formattedValue);
 
-                if (payment.getDiscountCode() != null && !payment.getDiscountCode().isEmpty()) {
-                    // Calculate discount amount
-                    Optional<Discount> optionalDiscount = discountRepository
-                            .findByDiscountCode(payment.getDiscountCode());
-
-                    if (optionalDiscount.isPresent()) {
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "Discount code found : " + payment.getDiscountCode());
-
-                        Double originalAmount = transactionAmount;
-                        // Overwrite with new amount
-                        transactionAmount = paymentService.calculateTransactionDiscount(optionalDiscount.get(),
-                                originalAmount, payment.getPhoneNo());
-
-                        transaction.setDiscountAmount(originalAmount - transactionAmount);
-                        transaction.setDiscountId(optionalDiscount.get().getId());
-                    }
-                }
-
-                // Redeem coins - get available coins for BILLPAYMENT
-                if (payment.getRedeemCoins()) {
-
-                    try {
-                        // Call the service to fetch available coins
-                        HttpResponse httpResponse = loyaltyService.getAvailableCoins(payment.getPhoneNo());
-                        OverallCoinsData overallCoinsData = loyaltyService
-                                .getDataAsOverallCoinsData(httpResponse.getData());
-
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "Referral coins available: " + overallCoinsData.getAvailableCoins());
-
-                        // Determine the amount of coins to redeem without making transactionAmount
-                        // negative
-                        if (transactionAmount < overallCoinsData.getAvailableCash()) {
-                            // If transactionAmount is less than available coins, redeem only the
-                            // transactionAmount
-                            transaction.setCoinsRedeemed(transactionAmount);
-                            transactionAmount = 0.0; // Set transactionAmount to 0 as the entire amount is redeemed
-                        } else {
-                            // Otherwise, redeem the full available cash amount
-                            transactionAmount = transactionAmount - overallCoinsData.getAvailableCash();
-                            transaction.setCoinsRedeemed(overallCoinsData.getAvailableCash());
-                        }
-                    } catch (HttpStatusCodeException e) {
-
-                        HttpResponse requestResponse = gson.fromJson(e.getResponseBodyAsString(), HttpResponse.class);
-
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "Error parsing available coins: " + e.getMessage());
-
-                        Map<String, String> errorDetails = new HashMap<>();
-                        errorDetails.put("error", "An error occurred while parsing available coins");
-                        errorDetails.put("message", requestResponse.getMessage());
-                        response.setData(errorDetails);
-                        response.setStatus(e.getStatusCode());
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                    } catch (RestClientException e) {
-                        response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
-                        response.setMessage("An error occurred while processing the request.");
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                    }
-                }
-
                 transaction.setTransactionAmount(transactionAmount);
 
             } else {
                 transaction.setDenoAmount(productVariant.getDeno());
                 Double transactionAmount = productVariant.getPrice() + fixFee;
-
-                if (payment.getDiscountCode() != null && !payment.getDiscountCode().isEmpty()) {
-                    // Calculate discount amount
-                    Optional<Discount> optionalDiscount = discountRepository
-                            .findByDiscountCode(payment.getDiscountCode());
-
-                    if (optionalDiscount.isPresent()) {
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "Discount code found : " + payment.getDiscountCode());
-
-                        Double originalAmount = transactionAmount;
-                        // Overwrite with new amount
-                        transactionAmount = paymentService.calculateTransactionDiscount(optionalDiscount.get(),
-                                originalAmount, payment.getPhoneNo());
-
-                        transaction.setDiscountAmount(originalAmount - transactionAmount);
-                        transaction.setDiscountId(optionalDiscount.get().getId());
-                    }
-                }
-
-                // Redeem coins - get available coins for other than BILLPAYMENT
-                if (payment.getRedeemCoins()) {
-
-                    try {
-                        // Call the service to fetch available coins
-                        HttpResponse httpResponse = loyaltyService.getAvailableCoins(payment.getPhoneNo());
-                        OverallCoinsData overallCoinsData = loyaltyService
-                                .getDataAsOverallCoinsData(httpResponse.getData());
-
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "Referral coins available: " + overallCoinsData.getAvailableCoins());
-
-                        // Determine the amount of coins to redeem without making transactionAmount
-                        // negative
-                        if (transactionAmount < overallCoinsData.getAvailableCash()) {
-                            // If transactionAmount is less than available coins, redeem only the
-                            // transactionAmount
-                            transaction.setCoinsRedeemed(transactionAmount);
-                            transactionAmount = 0.0; // Set transactionAmount to 0 as the entire amount is redeemed
-                        } else {
-                            // Otherwise, redeem the full available cash amount
-                            transactionAmount = transactionAmount - overallCoinsData.getAvailableCash();
-                            transaction.setCoinsRedeemed(overallCoinsData.getAvailableCash());
-                        }
-                    } catch (HttpStatusCodeException e) {
-
-                        HttpResponse requestResponse = gson.fromJson(e.getResponseBodyAsString(), HttpResponse.class);
-
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "Error parsing available coins: " + e.getMessage());
-
-                        Map<String, String> errorDetails = new HashMap<>();
-                        errorDetails.put("error", "An error occurred while parsing available coins");
-                        errorDetails.put("message", requestResponse.getMessage());
-                        response.setData(errorDetails);
-                        response.setStatus(e.getStatusCode());
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                    } catch (RestClientException e) {
-                        response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR);
-                        response.setMessage("An error occurred while processing the request.");
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                    }
-                }
 
                 transaction.setTransactionAmount(transactionAmount);
             }
@@ -494,12 +322,6 @@ public class PaymentController {
 
         Transaction savedTransaction = transactionRepository.save(transaction);
         response.setData(savedTransaction);
-
-        // try {
-        //     fraudCheckService.asyncCheckFraud1st(request, savedTransaction, logprefix);
-        // } catch (Exception e) {
-        //     // It should not trigger exception because it is an async method
-        // }
 
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }
@@ -822,7 +644,6 @@ public class PaymentController {
                         userUpdateRequest.setUserPhoneNumber(t.getPhoneNo());
                         userUpdateRequest.setDiscountCode(t.getDiscount().getDiscountCode());
                         userUpdateRequest.setStatus(DiscountUserStatus.REDEEMED);
-                        discountUserService.updateStatus(userUpdateRequest);
                     } catch (Exception ex) {
                         Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                                 t.getDiscount().getDiscountCode(), "Error update discount code status ",
@@ -844,12 +665,6 @@ public class PaymentController {
                     String responseCode = responseData.getResponseCode();
                     if ("000".equals(responseCode)) {
                         t.setStatus("PAID");
-
-                        // Handle active campaign and issue reward after successful wsp request
-                        handleActiveCampaignAndReward(t, logprefix, request);
-
-                        // Handle loyalty and referral after successful wsp request
-                        loyaltyService.handleLoyaltyAndReferralCoins(t, logprefix, productVariant);
 
                     } else if ("001".equals(responseCode) || "203".equals(responseCode)
                             || "204".equals(responseCode)) {
@@ -889,12 +704,6 @@ public class PaymentController {
                             t.getTransactionId(), "res::", res);
 
                     t.setStatus("PAID");
-
-                    // Handle active campaign and issue reward in Symplified section
-                    handleActiveCampaignAndReward(t, logprefix, request);
-
-                    // Handle loyalty and referral in Symplified section
-                    loyaltyService.handleLoyaltyAndReferralCoins(t, logprefix, productVariant);
 
                     Transaction saveTransaction = transactionRepository.save(t);
 
@@ -1395,12 +1204,6 @@ public class PaymentController {
 
         ProductVariant productVariant = productVariantDb.findById(transaction.getProductVariantId()).get();
 
-        // Handle loyalty and referral for test callback
-        loyaltyService.handleLoyaltyAndReferralCoins(transaction, logprefix, productVariant);
-
-        // Handle active campaign and issue reward for test callback
-        handleActiveCampaignAndReward(transaction, logprefix, request);
-
         if (transaction.getTransactionType().equals(TransactionEnum.ORDER)
                 || transaction.getTransactionType().equals(TransactionEnum.COUPON)) {
             // Symplified order service
@@ -1433,7 +1236,6 @@ public class PaymentController {
                     userUpdateRequest.setUserPhoneNumber(transaction.getPhoneNo());
                     userUpdateRequest.setDiscountCode(transaction.getDiscount().getDiscountCode());
                     userUpdateRequest.setStatus(DiscountUserStatus.REDEEMED);
-                    discountUserService.updateStatus(userUpdateRequest);
                 } catch (Exception ex) {
                     Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                             transaction.getDiscount().getDiscountCode(), "Error update discount code status ",
@@ -1499,28 +1301,6 @@ public class PaymentController {
         response.setStatus(HttpStatus.OK);
 
         return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    @GetMapping("/get-service-id")
-    public ResponseEntity<HttpResponse> getServiceId(HttpServletRequest request,
-            @RequestParam Integer productId) {
-        HttpResponse response = new HttpResponse(request.getRequestURI());
-
-        Optional<Product> optionalProduct = productRepository.findById(productId);
-
-        if (optionalProduct.isPresent()) {
-
-            Product product = optionalProduct.get();
-            ServiceId serviceId = loyaltyService.getServiceIdValues(product.getServiceId());
-            response.setData(serviceId);
-            response.setStatus(HttpStatus.OK);
-
-        } else {
-            response.setStatus(HttpStatus.NOT_FOUND);
-
-        }
-        return ResponseEntity.status(response.getStatus()).body(response);
-
     }
 
     public static Specification<Transaction> getTransactionHistoryByUser(
@@ -1762,12 +1542,6 @@ public class PaymentController {
                             if ("000".equals(responseCode)) {
                                 transaction.setStatus("PAID");
 
-                                // Handle active campaign and issue reward after successful wsp request
-                                handleActiveCampaignAndReward(transaction, logPrefix, request);
-
-                                // Handle loyalty and referral after successful wsp request
-                                loyaltyService.handleLoyaltyAndReferralCoins(transaction, logPrefix, productVariant);
-
                             } else if ("001".equals(responseCode) || "203".equals(responseCode)
                                     || "204".equals(responseCode)) {
                                 transaction.setStatus("PROCESSING");
@@ -1811,59 +1585,6 @@ public class PaymentController {
                     e.getMessage());
         }
         return ResponseEntity.status(response.getStatus()).body(response);
-    }
-
-    private void handleActiveCampaignAndReward(Transaction transaction, String logPrefix, HttpServletRequest request) {
-
-        // Get user
-        Optional<User> userOpt = userService.optionalUserById(transaction.getUserId());
-
-        // Check for campaign
-        Optional<Campaign> activeCampaign = campaignService.findAndValidateTransactionCriteria(transaction,
-                userOpt.orElse(null), logPrefix);
-        if (activeCampaign.isPresent()) {
-
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                    "Campaign criteria met for transaction ID: " + transaction.getTransactionId());
-
-            // Handle the transaction as it meets the campaign criteria
-            Campaign campaign = activeCampaign.get();
-            // Issue reward
-            switch (campaign.getRewardType()) {
-                case DISCOUNT_CODE:
-                    // Give discount code if applicable
-                    DiscountUserRequest discountUserRequest = new DiscountUserRequest();
-                    discountUserRequest.setDiscountCode(campaign.getRewardValue());
-                    discountUserRequest.setUserPhoneNumber(transaction.getPhoneNo());
-
-                    // Claim discount process
-                    HttpResponse claimDiscountResponse = discountUserService.claimDiscount(request, discountUserRequest,
-                            logPrefix, null);
-
-                    if (claimDiscountResponse.getStatus() == 200) {
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Reward " + campaign.getRewardValue() + " issued to " + transaction.getPhoneNo());
-                    } else {
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Error in issuing reward to " + transaction.getPhoneNo() + ": "
-                                        + claimDiscountResponse.getMessage());
-                    }
-                    break;
-
-                case EXTERNAL_VOUCHER_CODE:
-                    // Placeholder: Implement the process for issuing an external voucher code if
-                    // applicable
-                    break;
-                default:
-                    // Log if an unsupported value is found in the campaign rewardType
-                    Logger.application.warn(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                            "Unsupported campaign rewardType: " + campaign.getRewardType());
-                    break;
-            }
-        } else {
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                    "No active campaign");
-        }
     }
 
     private String extractParam(MultiValueMap<String, String> formData, String key) {

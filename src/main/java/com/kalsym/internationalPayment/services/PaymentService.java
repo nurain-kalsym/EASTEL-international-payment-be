@@ -3,21 +3,13 @@ package com.kalsym.internationalPayment.services;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.kalsym.internationalPayment.InternationalPaymentApplication;
-import com.kalsym.internationalPayment.model.Discount;
-import com.kalsym.internationalPayment.model.DiscountUser;
-import com.kalsym.internationalPayment.model.DiscountUserId;
 import com.kalsym.internationalPayment.model.Transaction;
 import com.kalsym.internationalPayment.model.dao.MMResponse;
-import com.kalsym.internationalPayment.model.dao.RelatedDiscount;
 import com.kalsym.internationalPayment.model.dao.Order.OrderConfirm;
 import com.kalsym.internationalPayment.model.dao.Order.OrderConfirmData;
 import com.kalsym.internationalPayment.model.dao.Order.OrderUpdate;
-import com.kalsym.internationalPayment.model.enums.DiscountStatus;
-import com.kalsym.internationalPayment.model.enums.DiscountUserStatus;
-import com.kalsym.internationalPayment.repositories.DiscountRepository;
 import com.kalsym.internationalPayment.repositories.TransactionRepository;
 import com.kalsym.internationalPayment.utility.Logger;
-import com.kalsym.internationalPayment.utility.MsisdnUtil;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,7 +20,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.text.SimpleDateFormat;
 import java.time.Instant;
-import java.util.Date;
 import java.util.Optional;
 
 @Service
@@ -72,15 +63,6 @@ public class PaymentService {
 
     @Value ("${BWALLET_PAYMENT_URL}")
     private String bwalletBaseUrl;
-
-    @Autowired
-    DiscountRepository discountRepository;
-
-    @Autowired
-    DiscountUserService discountUserService;
-
-    @Autowired
-    DiscountService discountService;
 
     @Autowired
     TransactionRepository transactionRepository;
@@ -637,38 +619,4 @@ public class PaymentService {
         }
         return null;
     }
-
-    public Double calculateTransactionDiscount(Discount discount, Double transactionAmount, String phoneNo) {
-
-        phoneNo = MsisdnUtil.formatMsisdn(phoneNo);
-
-        DiscountUserId discountUserId = new DiscountUserId();
-        discountUserId.setDiscountId(discount.getId());
-        discountUserId.setUserPhoneNumber(phoneNo);
-
-        Optional<DiscountUser> existingDiscountUser = discountUserService.getDiscountUserById(discountUserId);
-        if (existingDiscountUser.isPresent()) {
-            // Check if the discount is ACTIVE, the user status is NEW, and the current date
-            // is within the discount period
-            if (isDiscountActiveAndValid(discount, existingDiscountUser.get())) {
-                RelatedDiscount relatedDiscount = discountUserService.getRelatedDiscount(discount);
-                if (transactionAmount >= discount.getMinimumSpend()) {
-                    // Overwrite transaction amount
-                    transactionAmount = discountService.getDiscountedPrice(relatedDiscount, transactionAmount);
-                }
-            }
-        }
-        return transactionAmount;
-    }
-
-    private boolean isDiscountActiveAndValid(Discount discount, DiscountUser discountUser) {
-        if (!discount.getStatus().equals(DiscountStatus.ACTIVE)
-                || !discountUser.getStatus().equals(DiscountUserStatus.NEW)) {
-            return false;
-        }
-
-        Date currentDate = new Date();
-        return currentDate.after(discount.getStartDate()) && currentDate.before(discount.getEndDate());
-    }
-
 }
