@@ -1,6 +1,8 @@
 package com.kalsym.internationalPayment.controller;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +27,8 @@ import com.kalsym.internationalPayment.model.User;
 import com.kalsym.internationalPayment.model.VerificationCode;
 import com.kalsym.internationalPayment.model.enums.UserStatus;
 import com.kalsym.internationalPayment.repositories.UserRepository;
+import com.kalsym.internationalPayment.services.EmailService;
+import com.kalsym.internationalPayment.services.OtpService;
 import com.kalsym.internationalPayment.services.SmsService;
 import com.kalsym.internationalPayment.services.UserService;
 import com.kalsym.internationalPayment.utility.*;
@@ -51,7 +55,10 @@ public class AuthController {
         JwtUtils jwtUtils;
 
         @Autowired
-        SmsService smsService;
+        EmailService emailService;
+
+        @Autowired
+        OtpService otpService;
 
         /**
          * ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -60,64 +67,53 @@ public class AuthController {
          */
 
         @Operation(summary = "User registration", description = "To register user to the system (DEALER/ADMIN)")
-        @PostMapping(path = "/register") //✅
+        @PostMapping(path = "/register") 
         public ResponseEntity<HttpResponse> registerUser(
                 HttpServletRequest request,
                 @RequestBody User userBody) {
 
             HttpResponse response = new HttpResponse(request.getRequestURI());
-            String logprefix = "register";
+            String logprefix = "registerUser";
 
-                if (userBody.getPhoneNumber() != null && userBody.getPassword() != null) {
-
-                        String msisdn = MsisdnUtil.formatMsisdn(userBody.getPhoneNumber());
-
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "User phone: ",
-                                msisdn);
+                if (userBody.getEmail() != null && userBody.getPassword() != null  && userBody.getFullName() != null) {
+                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "User email: ",
+                                userBody.getEmail());
 
                         try {
+                                Optional<User> userOpt = userRepository.findByEmail(userBody.getEmail());
 
-                        Optional<User> userOpt = userRepository.findByPhoneNumber(msisdn);
+                                if (userOpt.isPresent()) {
+                                        response.setStatus(HttpStatus.EXPECTATION_FAILED, "Email address already taken.");
+                                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                                                "Email: " + userBody.getEmail() + " already taken.");
+                                        return ResponseEntity.status(response.getStatus()).body(response);
+                                }
 
-                        if (userOpt.isPresent()) {
-                                response.setStatus(HttpStatus.EXPECTATION_FAILED, "Phone number already taken");
-                                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                        "Phone number: " + HttpStatus.CONFLICT.value()
-                                                + " already taken");
-                                return ResponseEntity.status(response.getStatus()).body(response);
+                                User body = userService.userRegistration(userBody);
 
-                        }
-
-                        User body = userService.userRegistration(userBody);
-
-                        response.setData(body);
-                        response.setStatus(HttpStatus.OK);
+                                response.setData(body);
+                                response.setStatus(HttpStatus.OK);
 
                         } catch (DataIntegrityViolationException e) {
-                        e.printStackTrace();
+                                e.printStackTrace();
 
-                        if (e.getMessage().contains("User_un_phone")) {
+                                if (e.getMessage().contains("User_un_email")) {
 
-                                response.setStatus(HttpStatus.EXPECTATION_FAILED, "Phone number already taken");
-                                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                        "Phone number: " + Integer.toString(HttpStatus.CONFLICT.value())
-                                                + " already taken");
-                        } else if (e.getMessage().contains("User_un_email")) {
+                                        response.setStatus(HttpStatus.EXPECTATION_FAILED, "Email already taken");
+                                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                                                "Email: " + Integer.toString(HttpStatus.CONFLICT.value())
+                                                        + " already taken");
+                                } else {
 
-                                response.setStatus(HttpStatus.EXPECTATION_FAILED, "Email already taken");
-                                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                        "Email: " + Integer.toString(HttpStatus.CONFLICT.value())
-                                                + " already taken");
-                        } else {
-
-                                response.setStatus(HttpStatus.EXPECTATION_FAILED, e.getMessage());
-                                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                        "DataIntegrityViolationException : " + e.getMessage());
-                        }
+                                        response.setStatus(HttpStatus.EXPECTATION_FAILED, e.getMessage());
+                                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                                                "DataIntegrityViolationException : " + e.getMessage());
+                                }
 
                         }
                 } else {
-                        response.setStatus(HttpStatus.EXPECTATION_FAILED, "Invalid payload");
+                        response.setStatus(HttpStatus.BAD_REQUEST, "Invalid payload. Missing either email, full name or password.");
+                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "Invalid payload. Missing either email, full name or password.");
                 }
 
                 return ResponseEntity.status(response.getStatus()).body(response);
@@ -125,42 +121,36 @@ public class AuthController {
         }
 
         @Operation(summary = "User login", description = "To login to the system (DEALER/ADMIN)")
-        @PostMapping("/sign-in") //✅
+        @PostMapping("/sign-in")
         public ResponseEntity<?> authenticateUser(
                 HttpServletRequest request,
                 @RequestBody LoginRequest loginRequest) {
 
-                String logprefix = "sign-in";
+                HttpResponse response = new HttpResponse(request.getRequestURI());
+                String logprefix = "authenticateUser";
                 MySQLUserDetails userDetails = null;
                 Optional<User> optUser = Optional.empty(); 
 
-                String msisdn = loginRequest.getPhoneNumber();
-                if (loginRequest.getEmail() == null) {
-                        msisdn = MsisdnUtil.formatMsisdn(msisdn);
-                        optUser = userService.findUserByPhoneNumber(msisdn);
-                } else {
-                        optUser = userRepository.findByEmail(loginRequest.getEmail());
+                if (loginRequest.getEmail() == null || loginRequest.getPassword() == null) {
+                        response.setStatus(HttpStatus.BAD_REQUEST, "Invalid payload. Missing either email or password.");
+                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "Invalid payload. Missing either email or password.");
+                        return ResponseEntity.status(response.getStatus()).body(response);
                 }
-
+                
+                optUser = userRepository.findByEmail(loginRequest.getEmail());
                 if (!optUser.isPresent()) {
-                        String message = "";
-                        if (loginRequest.getEmail() == null)
-                        message = "User not found : " + msisdn;
-                        else
-                        message = "User not found : " + loginRequest.getEmail();
-                        HttpResponse response = new HttpResponse(request.getRequestURI());
-                        response.setStatus(HttpStatus.UNAUTHORIZED, "Incorrect credentials");
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                message);
+                        response.setStatus(HttpStatus.UNAUTHORIZED, "Incorrect credentials.");
+                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                                "User not found : " + loginRequest.getEmail());
                         return ResponseEntity.status(response.getStatus()).body(response);
                 }
 
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "User Id: ",
+                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "User ID: ",
                         optUser.get().getId());
 
                 if (optUser.get().getStatus().equals(UserStatus.INACTIVE)) {
-                        HttpResponse response = new HttpResponse(request.getRequestURI());
-                        response.setStatus(HttpStatus.UNAUTHORIZED, "User unauthorized");
+                        response.setStatus(HttpStatus.UNAUTHORIZED, "User unauthorized.");
+                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "User status is INACTVE.");
                         return ResponseEntity.status(response.getStatus()).body(response);
                 }
 
@@ -177,20 +167,25 @@ public class AuthController {
                 JwtBody jwtBody = new JwtBody();
                 jwtBody.setJwt(jwtToken);
 
-                return ResponseEntity.ok()
-                        .header("Authorization", "Bearer " + jwtToken)
-                        .body(jwtBody);
+                Map<String, Object> rspBody = new HashMap<>();
+                rspBody.put("userId", optUser.get().getId());
+                rspBody.put("isFirstTimeLogin", optUser.get().getIsFirstTimeLogin());
+                rspBody.put("jwt", jwtToken);
+
+                response.setStatus(HttpStatus.OK);
+                response.setData(rspBody);
+
+                return ResponseEntity.status(response.getStatus()).body(response);
         }
 
         @Operation(summary = "User logout", description = "To log out from the system")
-        @PostMapping("/sign-out") //✅
+        @PostMapping("/sign-out")
         public ResponseEntity<?> logoutUser() {
-                return ResponseEntity.ok()
-                        .body("You've been signed out!");
+                return ResponseEntity.ok().body("You've been signed out!");
         }
 
         @Operation(summary = "Token refresh", description = "To refresh token without needing to re-login")
-        @PostMapping("/refresh") //✅
+        @PostMapping("/refresh")
         public ResponseEntity<?> refreshToken(HttpServletRequest request,
                 @RequestBody JwtBody jwt) {
                 HttpResponse response = new HttpResponse(request.getRequestURI());
@@ -272,98 +267,46 @@ public class AuthController {
          * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
          */
 
-        @Operation(summary = "Request OTP", description = "To request OTP code via phone/email")
-        @PostMapping("/request-otp") //❓
+        @Operation(summary = "Request OTP", description = "To request OTP code via email")
+        @PostMapping("/request-otp") 
         public ResponseEntity<HttpResponse> sendOtpRequest(HttpServletRequest request,
                 @RequestBody RequestBodyData requestBodyData) {
 
                 HttpResponse response = new HttpResponse(request.getRequestURI());
                 String logPrefix = "sendOtpRequest";
 
-                try {
-
-                        if (requestBodyData.getDestAddr() != null) {
-                        String msisdn = MsisdnUtil.formatMsisdn(requestBodyData.getDestAddr());
-                        Optional<User> optUser = userService.findUserByPhoneNumber(msisdn);
-
-                        if (!optUser.isPresent()) {
-                                response.setStatus(HttpStatus.NOT_FOUND,
-                                        "Number Not Found : "
-                                                + msisdn);
-                                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                        "Number Not Found : "
-                                                + msisdn);
-
-                                return ResponseEntity.status(response.getStatus()).body(response);
-                        }
-
-                        //temp comment
-                        //smsService.sendHttpGetRequest(msisdn, message, true);
-                        response.setData("SUCCESS");
-                        response.setStatus(HttpStatus.OK);
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix, "OTP SENT For : ",
-                                msisdn);
-                        } else {
-                        // send OTP to email
-                        }
-
-
-                } catch (Exception e) {
-                        response.setStatus(HttpStatus.EXPECTATION_FAILED, e.getMessage());
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Exception " + e.getMessage());
+                if (requestBodyData.getEmail() == null) {
+                        response.setStatus(HttpStatus.BAD_REQUEST, "Invalid payload. Missing email.");
+                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix, "Invalid payload. Missing email.");
                 }
 
-                return ResponseEntity.status(response.getStatus()).body(response);
-
-        }
-
-        @Operation(summary = "Request registration OTP", description = "To request OTP specifically for registration.")
-        @PostMapping("/request-registration-otp") //❓
-        public ResponseEntity<HttpResponse> sendRegistrationOtpRequest(HttpServletRequest request,
-                @RequestBody RequestBodyData requestBodyData) {
-
-                HttpResponse response = new HttpResponse(request.getRequestURI());
-                String message = "OTP: ";
-                String logPrefix = "sendRegistrationOtpRequest";
-
                 try {
+                        Optional<User> optUser = userService.findUserByEmail(requestBodyData.getEmail());
 
-                        String msisdn = MsisdnUtil.formatMsisdn(requestBodyData.getDestAddr());
-
-                        Optional<User> optUser = userService.findUserByPhoneNumber(msisdn);
-
-                        // Throw error if exist
-                        if (optUser.isPresent()) {
-                        response.setStatus(HttpStatus.CONFLICT,
-                                "Phone number already registered");
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Phone number already registered: "
-                                        + msisdn);
-
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                        }
-
-                        if (requestBodyData.getEmail() != null) {
-                        Optional<User> optUserEmail = userService.findUserByEmail(requestBodyData.getEmail());
-
-                        // Throw error if exist
-                        if (optUserEmail.isPresent()) {
-                                response.setStatus(HttpStatus.CONFLICT,
-                                        "Email already registered");
+                        if (!optUser.isPresent()) {
+                                response.setStatus(HttpStatus.NOT_FOUND, "Email Not Found : "+ requestBodyData.getEmail());
                                 Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                        "Email already registered: "
-                                                + requestBodyData.getEmail());
+                                        "Email Not Found : " + requestBodyData.getEmail());
 
                                 return ResponseEntity.status(response.getStatus()).body(response);
                         }
-                        }
 
-                        smsService.sendHttpGetRequest(msisdn, message, true);
-                        response.setData("SUCCESS");
+                        // generate OTP
+                        User user = optUser.get();
+                        String otpCode = otpService.createOtp(user.getEmail());
+                        
+                        if (otpCode == null) {
+                                response.setStatus(HttpStatus.EXPECTATION_FAILED, "OTP Code failed to generate.");
+                                return ResponseEntity.status(response.getStatus()).body(response);
+                        }
+                        
+                        // send otp to email
+                        emailService.sendOtpEmail(otpCode, user.getFullName(), user.getEmail());
+
                         response.setStatus(HttpStatus.OK);
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix, "OTP SENT To : ",
-                                msisdn);
+                        response.setMessage("OTP has been requested successfully.");
+                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix, "OTP sent for email: ",
+                                requestBodyData.getEmail());
 
                 } catch (Exception e) {
                         response.setStatus(HttpStatus.EXPECTATION_FAILED, e.getMessage());
@@ -376,7 +319,7 @@ public class AuthController {
         }
 
         @Operation(summary = "Verify OTP", description = "To verify OTP")
-        @PostMapping("/confirm-verification-code") //❓
+        @PostMapping("/confirm-verification-code") 
         public ResponseEntity<?> confirmVerificationCode(HttpServletRequest request,
             @RequestBody() OTPRequest OTPRequestBody) {
                 String logPrefix = "confirmVerificationCode";
@@ -384,42 +327,35 @@ public class AuthController {
                 HttpResponse response = new HttpResponse(request.getRequestURI());
 
                 try {
+                        List<VerificationCode> vcResult = otpService.getOtpForEmail(OTPRequestBody.getEmail());
 
-                String msisdn = MsisdnUtil.formatMsisdn(OTPRequestBody.getMsisdn());
+                        if (vcResult.isEmpty()) {
+                                response.setStatus(HttpStatus.EXPECTATION_FAILED, "OTP Code Expired");
+                                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                                        "OTP Code For: " + OTPRequestBody.getEmail() + " Expired");
 
-                List<VerificationCode> vcResult = userService
-                        .getPhoneRegistrationCode(msisdn);
+                                return ResponseEntity.status(response.getStatus()).body(response);
+                        }
 
-                if (vcResult.isEmpty()) {
-                        response.setStatus(HttpStatus.EXPECTATION_FAILED, "TAC Code Expired");
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "TAC Code Number For: " + msisdn + " Expired");
+                        VerificationCode vc = vcResult.get(0);
 
+                        if (vc.getCode().equals(OTPRequestBody.getTacCode())) {
+                                response.setStatus(HttpStatus.OK, "OTP Validated");
+                                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                                        "OTP Validated For : " + OTPRequestBody.getEmail());
+                        } else {
+                                response.setStatus(HttpStatus.EXPECTATION_FAILED, "Wrong OTP Code");
+                                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                                        "Wrong OTP Code For: " + OTPRequestBody.getEmail());
+                        }
                         return ResponseEntity.status(response.getStatus()).body(response);
-                }
-
-                VerificationCode vc = vcResult.get(0);
-
-                if (vc.getCode().equals(OTPRequestBody.getTacCode())) {
-                        response.setStatus(HttpStatus.OK, "TAC Validated");
-                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "TAC Validated For : " + msisdn);
-                } else {
-                        response.setStatus(HttpStatus.EXPECTATION_FAILED, "Wrong TAC Code Number");
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                                "Wrong TAC Code Number For: " + msisdn);
-                }
-                return ResponseEntity.status(response.getStatus()).body(response);
                 } catch (Exception e) {
-                response.setStatus(HttpStatus.EXPECTATION_FAILED);
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
-                        "Exception " + e.getMessage());
-                return ResponseEntity.status(response.getStatus()).body(response);
+                        response.setStatus(HttpStatus.EXPECTATION_FAILED);
+                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix,
+                                "Exception " + e.getMessage());
+                        return ResponseEntity.status(response.getStatus()).body(response);
                 }
 
         }
 
-
-
-    
 }

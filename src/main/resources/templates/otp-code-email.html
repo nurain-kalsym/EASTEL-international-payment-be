@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fraud Detection Alert</title>
+    <style type="text/css">
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        background-color: #e0e0e0;
+        font-family: Arial, sans-serif;
+        line-height: 1;
+        color: #333;
+      }
+
+      .wrapper {
+        max-width: 600px;
+        margin: 40px auto;
+        background-color: #f7f7f7;
+        border-radius: 8px;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+      }
+
+      table {
+        background-color: #f9f9f9;
+        border-collapse: collapse;
+        width: 100%;
+      }
+      td {
+        vertical-align: top;
+      }
+      img {
+        border: 0;
+        max-width: 100%;
+      }
+      a {
+        color: #00a5cf;
+        text-decoration: none;
+      }
+
+      .header-bg {
+        background-color: #52BFB7;
+        background-image: url("https://api.e-kedai.my/api/assets/image/img-bg");
+        background-position: bottom;
+        background-repeat: no-repeat;
+        background-size: 600px auto;
+        color: #ffffff;
+        padding: 24px;
+        height: 20px;
+      }
+
+      .header-title {
+        font-size: 20px;
+        font-weight: bold;
+      }
+
+      .details-title {
+        font-size: 16px;
+        font-weight: bold;
+        margin-top: 32px;
+        margin-bottom: 8px;
+      }
+
+      .details-item,
+      .details-value {
+        padding: 4px 0;
+      }
+
+      .details-value {
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .alert-card {
+        background: #E8EDED;
+        border-left: 4px solid #83B9C9;
+        padding: 16px;
+        border-radius: 4px;
+        margin-top: 16px;
+        line-height: 1.2;
+        font-size: 12px;
+      }
+
+      .alert-card-title {
+        font-weight: bold;
+        color: #64A3B3;
+        margin-bottom: 8px;
+      }
+
+      .alert-level {
+        color: #e74c3c;
+        font-weight: bold;
+        font-size: 20px;
+      }
+
+      .action-button {
+        display: inline-block;
+        background-color: #e74c3c;
+        color: white !important;
+        padding: 10px 20px;
+        border-radius: 4px;
+        font-weight: bold;
+        text-decoration: none;
+      }
+
+      .button {
+        text-align: center;
+        margin-top: 30px;
+      }
+
+      .button a {
+        background-color: #dd1a76;
+        color: white;
+        padding: 12px 24px;
+        font-size: 16px;
+        font-weight: 600;
+        border-radius: 8px;
+        display: inline-block;
+        transition: background-color 0.3s, transform 0.2s;
+      }
+
+      .button a:hover {
+        background-color: #c0392b;
+        transform: translateY(-2px);
+      }
+
+      .footer {
+        text-align: center;
+        font-size: 12px;
+        color: #ffffff;
+        background-color: #52BFB7;
+        padding: 16px;
+        border-top: none;
+      }
+
+      @media only screen and (max-width: 600px) {
+        .wrapper {
+          width: 100% !important;
+          padding: 0 16px;
+        }
+        .greeting {
+          font-size: 20px !important;
+        }
+        .alert-level {
+          font-size: 18px !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <table>
+        <!-- Header -->
+        <tr>
+          <td class="header-bg">
+            <div class="header-title"> Eastel: International Payment</div>
+          </td>
+        </tr>
+
+        <!-- Alert Summary -->
+        <tr>
+          <td style="padding: 24px">
+            
+
+            <table style="margin-top: 16px; line-height:1.2;">
+              <tr>
+                <td style="font-weight:bold; font-size: 18px; padding-bottom:8px;"> Hi {{userName}}, </td>
+              </tr>
+               <tr>
+                <td style="font-size: 14px; color:#616161"> Your One-Time Pin (OTP) is: </td>
+              </tr>
+              <tr>
+                <td style="font-weight:bold; font-size: 18px; padding-top:15px; padding-bottom:15px;"> {{otpCode}} </td>
+              </tr>
+               <tr>
+                <td style="font-size: 14px; padding-bottom:8px; color:#616161"> Please enter your 6-digit OTP to proceed. 
+                </br> This OTP is valid for 1 minute and must not be shared with anyone. </td>
+              </tr>
+              <tr>
+                <td style="font-size: 14px; padding-bottom:8px; color:#616161"> Thank you. </td>
+              </tr>
+              <tr>
+                <td style="font-size: 14px; color:#616161"> Regards, </br> 
+                <span style="font-weight:bold"> Eastel </span> </td>
+              </tr>
+            </table>
+            
+            <div class="alert-card">
+              <div class="alert-card-title"> Fraud Prevention Tips </div>
+              <div>
+                Be alert to fraud. Avoid giving away your OTP, clicking suspicious links or 
+                trusting social media promotions that try to steal your information.
+              </div>
+            </div>
+
+          </td>
+        </tr>
+      </table>
+
+      <!-- Footer -->
+      <div class="footer">
+        © {{year}} Estel: International Payment. All rights reserved.<br />
+        This is an automated message - please do not reply directly to this
+        email.
+      </div>
+    </div>
+  </body>
+</html>

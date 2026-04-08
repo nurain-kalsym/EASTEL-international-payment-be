@@ -47,14 +47,29 @@ public class UserService {
 
     public User userRegistration(User user) {
 
-        String password = bcryptEncoder.encode(user.getPassword());
-        user.setPassword(password);
+        if (user.getPhoneNumber() != null) {
+            String msisdn = MsisdnUtil.formatMsisdn(user.getPhoneNumber());
+            user.setPhoneNumber(msisdn);
+        }
+        
+        user.setEmail(user.getEmail());
+        user.setFullName(user.getFullName());
+        user.setNationality(user.getNationality());
+        user.setLanguage(user.getLanguage());
         user.setIsEnable(true);// always set to true
         user.setIsFirstTimeLogin(false); //always set to false
         user.setStatus(UserStatus.ACTIVE);
-        user.setNationality(user.getNationality());
-
-        // Set default profile image based on nationality
+    
+        String password = bcryptEncoder.encode(user.getPassword());
+        user.setPassword(password);
+        
+        if (user.getRole() != null && user.getRole().equalsIgnoreCase("admin")) {
+            user.setRole("ADMIN");
+        } else {
+            user.setRole("DEALER");
+        }
+        
+        // set default profile image based on nationality
         Country country = countryRepository.findByNationality(user.getNationality());
         String profileImageId = null;
         // If country exists
@@ -70,23 +85,10 @@ public class UserService {
                 profileImageId = null;
             }
         }
+
         // Set imageId
         user.setImageId(profileImageId);
-
-        // Format phone number
-        String msisdn = MsisdnUtil.formatMsisdn(user.getPhoneNumber());
-        user.setPhoneNumber(msisdn);
-
-        if (user.getEmail() == null || user.getEmail().isEmpty()) {
-            user.setEmail(msisdn + "@eastel.com");
-        }
-
-        if (user.getRole() != null && user.getRole().equalsIgnoreCase("admin")) {
-            user.setRole("ADMIN");
-        } else {
-            user.setRole("DEALER");
-        }
-
+        
         Date date = new Date();
         user.setCreated(date);
         user.setUpdated(date);
@@ -155,71 +157,11 @@ public class UserService {
 
     }
 
-    // public VerificationCode sendVerificationCode(String phoneNumber) {
-
-    // Random rNo = new Random();
-    // final Integer code = rNo.nextInt((999999 - 100000) + 1) + 100000;// generate
-    // six digit of code
-
-    // VerificationCode vcBody = new VerificationCode();
-    // vcBody.setCode(code);
-    // vcBody.setType("REGISTER");
-    // vcBody.setPhoneNumber(phoneNumber);
-    // vcBody.setExpiry(new Date(System.currentTimeMillis() +
-    // TimeUnit.MINUTES.toMillis(5)));// add 5 minutes
-
-    // VerificationCode saveData = verificationCodeRepository.save(vcBody);
-
-    // return saveData;
-    // }
-
-    public List<VerificationCode> getPhoneRegistrationCode(String phoneNumber) {
-
-        phoneNumber = MsisdnUtil.formatMsisdn(phoneNumber);
-
-        List<VerificationCode> getData = verificationCodeRepository.findByPhoneNumberAndExpiryGreaterThanEqual(
-                phoneNumber, new Date(System.currentTimeMillis()));
-
-        // sort latest data
-        return getData.stream()
-                .sorted(Comparator.comparing(VerificationCode::getExpiry).reversed())
-                .collect(Collectors.toList());
-    }
-
-    public List<VerificationCode> getEmailPasswordCode(String email) {
-
-        List<VerificationCode> getData = verificationCodeRepository.findByEmailAndExpiryGreaterThanEqual(email,
-                new Date(System.currentTimeMillis()));
-
-        // sort latest data
-        List<VerificationCode> sortLatest = getData.stream()
-                .sorted(Comparator.comparing(VerificationCode::getExpiry).reversed())
-                .collect(Collectors.toList());
-
-        return sortLatest;
-    }
-
     public Integer generateRandomCode() {
         Random rNo = new Random();
         final Integer code = rNo.nextInt((999999 - 100000) + 1) + 100000;// generate six digit of code
         return code;
     }
-
-    // public VerificationCode verificationCodeEmail(String email, String type) {
-
-    // Integer code = generateRandomCode();// generate six digit of code
-
-    // VerificationCode vcBody = new VerificationCode();
-    // vcBody.setCode(code);
-    // vcBody.setType(type);
-    // vcBody.setEmail(email);
-    // vcBody.setExpiry(new Date(System.currentTimeMillis() +
-    // TimeUnit.MINUTES.toMillis(30)));// add 30minutes
-
-    // VerificationCode saveData = verificationCodeRepository.save(vcBody);
-
-    // return saveData;
-    // }
 
     public User getUser(String token) {
         try {

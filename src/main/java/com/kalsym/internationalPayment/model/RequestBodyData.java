@@ -9,6 +9,5 @@ import lombok.ToString;
 @Setter
 public class RequestBodyData {
 
-    private String destAddr;
     private String email;
 }

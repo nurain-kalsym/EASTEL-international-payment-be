@@ -12,6 +12,6 @@ import lombok.ToString;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @ToString
 public class OTPRequest {        
-    private String msisdn;
+    private String email;
     private String tacCode;
 }

@@ -66,7 +66,7 @@ public class UserController {
          */
 
         @Operation(summary = "Get user details", description = "To retrieve user's details. ie: fullname, email, nationatity, etc")
-        @GetMapping(path = { "/details" }) //✅
+        @GetMapping(path = { "/details" }) 
         public ResponseEntity<HttpResponse> getUserById(
                 HttpServletRequest request) {
                 HttpResponse response = new HttpResponse(request.getRequestURI());
@@ -95,8 +95,8 @@ public class UserController {
 
         }
 
-        @Operation(summary = "Update/Change password", description = "To let user change their password in profile page")
-        @PutMapping(path = { "/{id}/change-password" }) //✅
+        @Operation(summary = "Update/Change password", description = "To let user change their password")
+        @PutMapping(path = { "/{id}/change-password" }) 
         public ResponseEntity<HttpResponse> changePassword(HttpServletRequest request,
                 @PathVariable String id,
                 @RequestBody ChangePasswordRequest reqBody) {
@@ -115,6 +115,12 @@ public class UserController {
                 User userData = userOpt.get();
 
                 // checking password reset qualification
+                if (!passwordEncoder.matches(reqBody.getCurrentPassword(), userData.getPassword())) {
+                        response.setStatus(HttpStatus.BAD_REQUEST,
+                                "Old Password is incorrect.");
+                        return ResponseEntity.status(response.getStatus()).body(response);
+                }
+
                 if (!reqBody.getNewPassword().equals(reqBody.getConfirmNewPassword())) {
                         response.setStatus(HttpStatus.EXPECTATION_FAILED, "The password confirmation do not match.",
                                 Integer.toString(HttpStatus.EXPECTATION_FAILED.value()));
@@ -174,63 +180,8 @@ public class UserController {
 
         }
 
-        @Operation(summary = "First time login password reset", description = "To let user reset password when first time login")
-        @PutMapping(path = { "/reset-password" }) // first-time login password reset //✅
-        public ResponseEntity<HttpResponse> resetPassword(HttpServletRequest request,
-                @RequestBody ChangePasswordRequest changePasswordRequest) {
-                String logprefix = "resetPassword";
-
-                HttpResponse response = new HttpResponse(request.getRequestURI());
-                String msisdn = MsisdnUtil.formatMsisdn(changePasswordRequest.getMsisdn());
-                Optional<User> userOpt = userService.findUserByPhoneNumber(msisdn);
-
-                if (!userOpt.isPresent()) {
-                        response.setStatus(HttpStatus.NOT_FOUND, "User not found",
-                                Integer.toString(HttpStatus.NOT_FOUND.value()));
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "User with id : " + msisdn + " Not Found");
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                }
-
-                User userData = userOpt.get();
-
-                // check if already first time login
-                if (userData.getIsFirstTimeLogin()) {
-                        response.setStatus(HttpStatus.EXPECTATION_FAILED,
-                                "Account has already reset their password for first time login.");
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                }
-
-                // checking password reset qualification
-                if (!passwordEncoder.matches(changePasswordRequest.getCurrentPassword(), userData.getPassword())) {
-                        response.setStatus(HttpStatus.BAD_REQUEST,
-                                "Old Password is incorrect.");
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                }
-
-                if (!changePasswordRequest.getNewPassword().equals(changePasswordRequest.getConfirmNewPassword())) {
-                        response.setStatus(HttpStatus.BAD_REQUEST,
-                                "The password confirmation do not match.");
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                }
-
-                if (passwordEncoder.matches(changePasswordRequest.getNewPassword(), userData.getPassword())) {
-                        response.setStatus(HttpStatus.BAD_REQUEST,
-                                "New password cannot be the same as old password.");
-                        return ResponseEntity.status(response.getStatus()).body(response);
-                }
-
-                // allow user to reset if it is enable
-                userData.setPassword(changePasswordRequest.getNewPassword());
-                User saveData = userService.userProfileResetPassword(userData);
-                response.setData(saveData);
-                response.setStatus(HttpStatus.OK, "Password reset is successful.");
-
-                return ResponseEntity.status(response.getStatus()).body(response);
-        }
-
         @Operation(summary = "Update user profile", description = "To update user profile. ie: fullname, nationality, email, etc")
-        @PutMapping(path = { "/{id}/change-profile" }) //✅
+        @PutMapping(path = { "/{id}/change-profile" })
         public ResponseEntity<HttpResponse> changeUserProfile(HttpServletRequest request,
                 @RequestHeader("Authorization") String authHeader,
                 @PathVariable String id,
@@ -322,7 +273,7 @@ public class UserController {
         }
 
         @Operation(summary = "Update user status", description = "To update status to ACTIVE/INACTIVE")
-        @PutMapping(path = { "/{id}/change-status" }) //✅
+        @PutMapping(path = { "/{id}/change-status" }) 
         public ResponseEntity<HttpResponse> changeUserStatus(HttpServletRequest request,
                 @PathVariable String id,
                 @RequestParam(required = true) UserStatus status) {
@@ -405,7 +356,7 @@ public class UserController {
         }
 
         @Operation(summary = "Update user language", description = "To update user's preffered language")
-        @PutMapping(path = { "/{id}/change-language" }) //✅
+        @PutMapping(path = { "/{id}/change-language" })
         public ResponseEntity<HttpResponse> changeLanguageProfile(HttpServletRequest request,
                 @PathVariable String id,
                 @RequestBody ChangeNationality reqBody) {
@@ -459,7 +410,7 @@ public class UserController {
         }
 
         @Operation(summary = "Get all users", description = "To retrieve all users with filter/pagination. ie: date range, search, etc")
-        @GetMapping("/pagination") //✅
+        @GetMapping("/pagination")
         public ResponseEntity<HttpResponse> getUsers(HttpServletRequest request,
                 @RequestParam(defaultValue = "created", required = false) String sortBy,
                 @RequestParam(defaultValue = "ASC", required = false) String sortingOrder,
