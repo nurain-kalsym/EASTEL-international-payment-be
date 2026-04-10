@@ -29,7 +29,6 @@ import com.kalsym.internationalPayment.model.enums.UserStatus;
 import com.kalsym.internationalPayment.repositories.UserRepository;
 import com.kalsym.internationalPayment.services.EmailService;
 import com.kalsym.internationalPayment.services.OtpService;
-import com.kalsym.internationalPayment.services.SmsService;
 import com.kalsym.internationalPayment.services.UserService;
 import com.kalsym.internationalPayment.utility.*;
 

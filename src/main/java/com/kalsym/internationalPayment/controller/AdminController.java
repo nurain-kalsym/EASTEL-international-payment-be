@@ -25,10 +25,10 @@ import com.kalsym.internationalPayment.model.enums.VariantType;
 import com.kalsym.internationalPayment.repositories.*;
 import com.kalsym.internationalPayment.services.*;
 import com.kalsym.internationalPayment.utility.HttpResponse;
-import com.kalsym.internationalPayment.utility.JwtUtils;
 import com.kalsym.internationalPayment.utility.Logger;
 
 import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -43,9 +43,6 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/admins")
 public class AdminController {
-
-    @Autowired
-    SmsService smsService;
 
     @Autowired
     UserRepository userRepository;
@@ -70,9 +67,6 @@ public class AdminController {
 
     @Value("${image.assets.location:eastel}")
     private String imageAssetPath;
-
-    @Value("${sms.brand:eastel}")
-    private String smsBrand;
 
     @Autowired
     ImageAssetsRepository imageAssetsRepository;
@@ -153,7 +147,7 @@ public class AdminController {
                 pageable = PageRequest.of(page, pageSize, Sort.by(sortBy).ascending());
             }
 
-            Page<User> userList = userRepository.findAll(getUserSpecs(example, roles), pageable);
+            Page<User> userList = userRepository.findAll(getUserSpecs(roles), pageable);
 
             response.setData(userList);
             response.setStatus(HttpStatus.OK);
@@ -168,20 +162,19 @@ public class AdminController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    public static Specification<User> getUserSpecs(Example<User> example, List<String> roles) {
+    public static Specification<User> getUserSpecs(List<String> roles) {
         return (root, query, builder) -> {
-            final List<Predicate> predicates = new ArrayList<>();
+            List<Predicate> predicates = new ArrayList<>();
 
+            // role filter
             if (roles != null && !roles.isEmpty()) {
-                List<String> normalizedRoles = roles.stream().map(String::toUpperCase).collect(Collectors.toList());
-
-                Predicate rolePredicate = root.get("role").in(normalizedRoles);
-                predicates.add(rolePredicate);
+                List<String> normalizedRoles = roles.stream()
+                        .map(String::toUpperCase)
+                        .collect(Collectors.toList());
+                predicates.add(root.get("role").in(normalizedRoles));
             }
 
-            predicates.add(QueryByExamplePredicateBuilder.getPredicate(root, builder, example));
-
-            return builder.and(predicates.toArray(new Predicate[predicates.size()]));
+            return builder.and(predicates.toArray(new Predicate[0]));
         };
     }
 
@@ -193,7 +186,7 @@ public class AdminController {
      */
 
     @Operation(summary = "Add new image", description = "To create save image in file server")
-    @PostMapping(path = { "/assets/create" })
+    @PostMapping(value = "/assets/create", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<HttpResponse> postAssetImage(
             HttpServletRequest request,
             @RequestParam() ImageType imageType,
@@ -688,7 +681,7 @@ public class AdminController {
     }
 
     @Operation(summary = "Bulk upload variants", description = "To upload variants in bulk by product ID and type")
-    @PostMapping("/products/variants/upload/bulk/{id}/{type}")
+    @PostMapping( value = "/products/variants/upload/bulk/{id}/{type}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<HttpResponse> uploadFile(
             HttpServletRequest request,
             @RequestParam("file") MultipartFile file,
@@ -801,7 +794,7 @@ public class AdminController {
     }
 
     @Operation(summary = "Bulk update variants", description = "To update variants in bulk by product ID and type")
-    @PostMapping("/products/variants/update/bulk/{id}/{type}")
+    @PostMapping( value = "/products/variants/update/bulk/{id}/{type}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<HttpResponse> uploadFileToUpdate(
             HttpServletRequest request,
             @RequestParam("file") MultipartFile file,
@@ -818,7 +811,7 @@ public class AdminController {
         }
 
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "ProductVariant id : " + id);
+                "Product id : " + id);
 
         String message = "";
         List<ProductVariant> objectList = new ArrayList<>();
@@ -830,12 +823,9 @@ public class AdminController {
                 for (ProductVariant variant : objectList) {
                     variant.setProductId(id);
                     if (variant.getId() != null) {
-
                         variantData = productVariantRepository.findByWspProductCode(variant.getWspProductCode());
                         variantName = variant.getVariantName();
                         productVariantService.updateProductVariant(variant.getId(), variant);
-                    } else {
-
                     }
                 }
 
@@ -879,7 +869,7 @@ public class AdminController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @Operation(summary = "Edit variant", description = "To edit variant by ID")
+    @Operation(summary = "Edit variant", description = "To edit variant by product ID")
     @PutMapping(path = { "/products/variants/edit/{id}" })
     public ResponseEntity<HttpResponse> putProductVariant(
             HttpServletRequest request,
@@ -897,7 +887,7 @@ public class AdminController {
         }
 
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                "ProductVariant id : " + id);
+                "product id : " + id);
         try {
             if (productRequest.getProductVariant() != null) {
                 // to handle null product variant
@@ -969,16 +959,6 @@ public class AdminController {
         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                 "Create or Update Product Variant");
         try {
-            User user = userService.getUser(request.getHeader(HEADER_STRING));
-            if (user == null) {
-                response.setStatus(HttpStatus.NOT_FOUND);
-                response.setMessage("User Not Found");
-                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "User Not Found, User token : " + request.getHeader(HEADER_STRING));
-
-                return ResponseEntity.status(response.getStatus()).body(response);
-            }
-
             // Create product
             Product resultProduct = productService.createOrUpdateProduct(productCode, productName, categoryId,
                     countryCode, productType);
@@ -1059,7 +1039,6 @@ public class AdminController {
             @RequestParam(required = false) String paymentStatus,
             @RequestParam(required = false) String globalSearch,
             @RequestParam(required = false) String paymentMethod,
-            @RequestParam(required = false, defaultValue = "false") Boolean onlyFraud,
             @RequestParam(required = false) String userId
 
     ) throws Exception {
@@ -1081,7 +1060,6 @@ public class AdminController {
                     .matchingAll()
                     .withIgnoreCase()
                     .withMatcher("userId", new ExampleMatcher.GenericPropertyMatcher().exact())
-                    // .withMatcher("status", new ExampleMatcher.GenericPropertyMatcher().exact())
                     .withIgnoreNullValues()
                     .withStringMatcher(ExampleMatcher.StringMatcher.CONTAINING);
             Example<Transaction> example = Example.of(transaction, matcher);
@@ -1092,11 +1070,19 @@ public class AdminController {
             } else {
                 pageable = PageRequest.of(page, pageSize, Sort.by(sortBy).ascending());
             }
+
+            // Check if table is empty
+            if (transactionRepository.count() == 0) {
+                Page<Transaction> emptyPage = Page.empty(pageable);
+                response.setData(emptyPage);
+                response.setStatus(HttpStatus.OK);
+                return ResponseEntity.status(HttpStatus.OK).body(response);
+            }
+
             Page<Transaction> transactions = transactionRepository
                     .findAll(
                             getTransactionHistorySpec(from, to, example, variantType, status, paymentStatus,
-                                    globalSearch,
-                                    paymentMethod, onlyFraud, userId),
+                                    globalSearch,paymentMethod, userId),
                             pageable);
             List<Transaction> tempResultList = transactions.getContent();
 
@@ -1106,6 +1092,7 @@ public class AdminController {
             response.setData(transactions);
 
             return ResponseEntity.status(HttpStatus.OK).body(response);
+
         } catch (Exception e) {
             Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                     "Exception " + e.getMessage());
@@ -1118,21 +1105,18 @@ public class AdminController {
 
     public static Specification<Transaction> getTransactionHistorySpec(
             Date from, Date to, Example<Transaction> example, VariantType variantType, String status,
-            String paymentStatus, String globalSearch, String paymentMethod, Boolean onlyFraud, String userId) {
+            String paymentStatus, String globalSearch, String paymentMethod, String userId) {
         return (root, query, builder) -> {
-            final List<Predicate> predicates = new ArrayList<>();
-            Join<Transaction, ProductVariant> productVariant = root.join("productVariant");
-            Join<Transaction, Product> product = root.join("product");
+            List<Predicate> predicates = new ArrayList<>();
+
+            // LEFT JOIN instead of INNER JOIN
+            Join<Transaction, ProductVariant> productVariant = root.join("productVariant", JoinType.LEFT);
+            Join<Transaction, Product> product = root.join("product", JoinType.LEFT);
 
             if (from != null && to != null) {
-
                 Calendar calendar = Calendar.getInstance();
                 calendar.setTime(to);
-
-                // Add one day to the current date
                 calendar.add(Calendar.DAY_OF_MONTH, 1);
-
-                // Get the updated date
                 Date updatedDate = calendar.getTime();
                 predicates.add(builder.greaterThanOrEqualTo(root.get("createdDate"), from));
                 predicates.add(builder.lessThanOrEqualTo(root.get("createdDate"), updatedDate));
@@ -1161,7 +1145,6 @@ public class AdminController {
             }
 
             if (globalSearch != null) {
-                // Predicate for Employee Projects data
                 predicates.add(builder.or(
                         builder.like(product.get("productName"), "%" + globalSearch + "%"),
                         builder.like(product.get("productCode"), "%" + globalSearch + "%"),
@@ -1174,30 +1157,20 @@ public class AdminController {
                         builder.like(root.get("accountNo"), "%" + globalSearch + "%")));
             }
 
-            // To show only fraud transactions
-            if (onlyFraud) {
-                predicates.add(builder.equal(root.get("isFraud"), true));
-            }
-
             if (userId != null) {
                 predicates.add(builder.equal(root.get("userId"), userId));
             }
 
-            // Exclude records where both status and paymentStatus are PENDING
-            // predicates.add(builder.not(
-            // builder.and(
-            // builder.equal(root.get("status"), "PENDING"),
-            // builder.equal(root.get("paymentStatus"), PaymentStatus.PENDING))));
-
+            // Add example
             predicates.add(QueryByExamplePredicateBuilder.getPredicate(root, builder, example));
 
-            return builder.and(predicates.toArray(new Predicate[predicates.size()]));
+            return builder.and(predicates.toArray(new Predicate[0]));
         };
     }
 
-    @Operation(summary = "Update transaction status", description = "To update transation status")
-    @PutMapping("/transactions/edit/status/{id}")
-    public ResponseEntity<HttpResponse> editTransactionStatus(HttpServletRequest request, @PathVariable String id) {
+    @Operation(summary = "Refund transaction", description = "To refund transation status by transactionId")
+    @PutMapping("/transactions/refund/{transactionId}")
+    public ResponseEntity<HttpResponse> editTransactionStatus(HttpServletRequest request, @PathVariable String transactionId) {
         HttpResponse response = new HttpResponse(request.getRequestURI());
         String logprefix = "editTransactionStatus()";
 
@@ -1209,12 +1182,16 @@ public class AdminController {
 
         try {
             User user = userService.getUser(request.getHeader(HEADER_STRING));
-            Optional<Transaction> optionalTransaction = transactionRepository.findByTransactionId(id);
-
-            if (!optionalTransaction.isPresent()) {
+            if (user == null) {
                 response.setStatus(HttpStatus.NOT_FOUND);
+                response.setMessage("User Not Found");
+                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                        "User Not Found, User token : " + request.getHeader(HEADER_STRING));
+
                 return ResponseEntity.status(response.getStatus()).body(response);
             }
+
+            Optional<Transaction> optionalTransaction = transactionRepository.findByTransactionId(transactionId);
             Transaction transaction = optionalTransaction.get();
 
             // Get the current date and time
@@ -1250,15 +1227,14 @@ public class AdminController {
                 // sending refund message
                 try {
                     String formattedAmount = String.format("%.2f", transaction.getDenoAmount());
-                    String message = "RM0 " + smsBrand + ": Your eByzarr transaction RM" + formattedAmount +
-                            " has been refunded. Expect the process to complete within 1-3 working days. Ref ID: " +
-                            transaction.getTransactionId() + ".";
-                    smsService.sendHttpGetRequest(transaction.getPhoneNo(), message, false);
+
+                    emailService.sendRefundEmail(transaction.getName(), transaction.getEmail(), formattedAmount, transaction.getTransactionId());
                     transaction.setNotificationSent(true);
-                    Logger.application.info("Refund success send message to: " + transaction.getPhoneNo());
+
+                    Logger.application.info("Refund success send email to: " + transaction.getEmail());
                 } catch (Exception e) {
                     transaction.setNotificationSent(false);
-                    Logger.application.error("Refund failed to send message to: " + transaction.getPhoneNo()
+                    Logger.application.error("Refund failed to send email to: " + transaction.getEmail()
                             + " , Exception: " + e.getMessage());
                 }
                 transactionRepository.save(transaction);
@@ -1361,7 +1337,7 @@ public class AdminController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @Operation(summary = "Get summarie", description = "Fetches paginated summary records sorted by date.")
+    @Operation(summary = "Get summaries", description = "Fetches paginated summary records sorted by date.")
     @GetMapping("/summary")
     public ResponseEntity<HttpResponse> getAllSummary(HttpServletRequest request,
             @RequestParam(defaultValue = "0") int page,
@@ -1387,7 +1363,7 @@ public class AdminController {
 
         } catch (Exception e) {
             response.setStatus(HttpStatus.BAD_REQUEST);
-            response.setMessage("Failed to fetch summarys: " + e.getMessage());
+            response.setMessage("Failed to fetch summary: " + e.getMessage());
             Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                     "Exception " + e.getMessage());
         }

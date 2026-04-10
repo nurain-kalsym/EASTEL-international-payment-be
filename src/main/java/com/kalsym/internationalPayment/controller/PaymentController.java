@@ -1258,7 +1258,6 @@ public class PaymentController {
         String extra3;
         String extra4;
         String discountCode;
-        Boolean redeemCoins;
         Double fixFee;
     }
 }

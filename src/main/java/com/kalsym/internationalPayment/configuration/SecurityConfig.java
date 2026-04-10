@@ -75,17 +75,11 @@ public class SecurityConfig {
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
+                    // "/**",
                      "/auth/**",
-                    "/payment/payment-channel/**",
-                    "/payment/exchange/currency/**",
-                    "/payment/validateBill/**",
-                    "/assets/image/**",
-                    "/callback",
-                    "/payment/callback",
-                    "/payment/**/status",
+                    "/assets/**",
                     "/error",
                     "/v2/api-docs",
-                    "/payment/request/payment",
                     "/swagger-resources",
                     "/swagger-resources/**",
                     "/configuration/ui",

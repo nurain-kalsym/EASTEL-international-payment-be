@@ -14,8 +14,8 @@ import com.kalsym.internationalPayment.model.enums.PaymentStatus;
 import com.kalsym.internationalPayment.model.enums.TransactionEnum;
 import com.kalsym.internationalPayment.repositories.ProductVariantRepository;
 import com.kalsym.internationalPayment.repositories.TransactionRepository;
+import com.kalsym.internationalPayment.services.EmailService;
 import com.kalsym.internationalPayment.services.PaymentService;
-import com.kalsym.internationalPayment.services.SmsService;
 import com.kalsym.internationalPayment.services.WSPRequestService;
 import com.kalsym.internationalPayment.utility.Logger;
 
@@ -38,12 +38,9 @@ public class QueryTransactionSheduler {
 
     @Autowired
     PaymentService paymentService;
-
+    
     @Autowired
-    SmsService smsService;
-
-    @Value("${sms.brand:eastel}")
-    private String smsBrand;
+    EmailService emailService;
 
     @Scheduled(cron = "${pending-transaction:0 0/1 * * * ?}")
     public void queryPendingTransactions() {
@@ -156,17 +153,15 @@ public class QueryTransactionSheduler {
 
                 String formattedAmount = String.format("%.2f", transaction.getDenoAmount());
 
-                String message = "RM0 " + smsBrand + ": Your eByzarr transaction RM" + formattedAmount +
-                        " has been refunded. Ref ID: " + transaction.getTransactionId() + ".";
                 try {
-                    smsService.sendHttpGetRequest(transaction.getPhoneNo(), message, false);
+                    emailService.sendRefundEmail(transaction.getName(), transaction.getEmail(), formattedAmount, transaction.getTransactionId());
                     transaction.setNotificationSent(true);
                     Logger.application
-                            .info("Refund success send message to: " + transaction.getPhoneNo());
+                            .info("Refund success send email to: " + transaction.getEmail());
                 } catch (Exception e) {
                     transaction.setNotificationSent(false);
                     Logger.application
-                            .info("Refund failed to send message to: " + transaction.getPhoneNo() + " , Exception: "
+                            .info("Refund failed to send email to: " + transaction.getEmail() + " , Exception: "
                                     + e.getMessage());
                 }
             }

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial; }
+        .header { font-size: 50px; font-weight: bold; padding-bottom:20px }
+        .right { float: right; }
+        .line { border-top: 1px solid #000; margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; }
+        .text-right { text-align: right; }
+    </style>
+</head>
+<body>
+
+<div class="header">PAYMENT <br/> RECEIPT</div>
+
+<div class="right">
+    Receipt No: <span th:text="${receiptNo}"></span><br/>
+    Date: <span th:text="${date}"></span>
+</div>
+
+<p>
+    <span th:text="${companyName}"></span><br/>
+    <span th:text="${street}"></span><br/>
+    <span th:text="${cityStateCountry}"></span><br/>
+    <span th:text="${zip}"></span><br/>
+    <span th:text="${phone}"></span><br/>
+    <span th:text="${compEmail}"></span>
+</p>
+
+<div class="line"></div>
+
+<p>
+    <span th:text="${customerName}"></span><br/>
+    <span th:text="${accountNumber}"></span><br/>
+    <span th:text="${email}"></span>
+</p>
+
+<table>
+    <tr>
+        <th style="text-align:left">Description</th>
+        <th class="text-right">Amount (RM)</th>
+    </tr>
+</table>
+
+<div class="line"></div>
+
+<table>
+    <tr>
+        <td> <b th:text="${product}"></b><br/> 
+            <span th:text="${variant}"> </span>
+        </td>
+        <td class="text-right" th:text="${amount}"></td>
+    </tr>
+</table>
+
+<div class="line"></div>
+
+<p class="text-right">
+    <b> Total: </b> <span th:text="${total}"></span>
+</p>
+
+<p class="text-right">
+   <b> Service Fee: </b> <span th:text="${serviceFee}"></span>
+</p>
+
+<div class="line"></div>
+
+<p class="text-right">
+   <b> Grand Total:  </b> <span th:text="${grandTotal}"></span>
+</p>
+
+</body>
+</html>

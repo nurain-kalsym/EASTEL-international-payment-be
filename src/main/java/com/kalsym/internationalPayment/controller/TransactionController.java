@@ -1,5 +1,6 @@
 package com.kalsym.internationalPayment.controller;
 
+import java.io.IOException;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -10,6 +11,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Example;
 import org.springframework.data.domain.ExampleMatcher;
 import org.springframework.data.domain.Page;
@@ -19,7 +21,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.convert.QueryByExamplePredicateBuilder;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,6 +49,7 @@ import com.kalsym.internationalPayment.repositories.CountryRepository;
 import com.kalsym.internationalPayment.repositories.ProductRepository;
 import com.kalsym.internationalPayment.repositories.ProductVariantRepository;
 import com.kalsym.internationalPayment.repositories.TransactionRepository;
+import com.kalsym.internationalPayment.services.PdfService;
 import com.kalsym.internationalPayment.services.UserService;
 import com.kalsym.internationalPayment.services.WSPRequestService;
 import com.kalsym.internationalPayment.utility.HttpResponse;
@@ -82,7 +87,9 @@ public class TransactionController {
     @Autowired
     TransactionRepository transactionRepository;
 
-    
+    @Autowired
+    PdfService pdfService;
+
     @Operation(summary = "Create transaction", description = "To create new transaction")
     @PostMapping(path = { "/create" })
     public ResponseEntity<HttpResponse> createTransaction(HttpServletRequest request,
@@ -129,10 +136,8 @@ public class TransactionController {
             }
             transaction.setProduct(product);
             transaction.setProductVariantId(productVariant.getId());
-            Gson gson = new Gson();
 
             if (productVariant.getVariantType().equals(VariantType.BILLPAYMENT)) {
-
                 // Check retail rate first before save into for bill payment only
                 Country country = countryRepository.findById(product.getCountryCode()).get();
 
@@ -214,7 +219,7 @@ public class TransactionController {
                 transaction.setPaymentStatus(PaymentStatus.PAID);
             }
         } else {
-            systemTransactionId = StringUtility.CreateRefID("EKD");
+            systemTransactionId = StringUtility.CreateRefID("EIP");
         }
         transaction.setTransactionId(systemTransactionId);
 
@@ -295,6 +300,8 @@ public class TransactionController {
                                 globalSearch, withRefund),
                         pageable);
         List<Transaction> tempResultList = transactions.getContent();
+
+        System.out.println("============" +tempResultList.size());
 
         tempResultList = tempResultList.stream()
                 .map(x -> {
@@ -398,6 +405,50 @@ public class TransactionController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
+    @Operation(summary = "", description = "")
+    @GetMapping("/receipt/download/pdf/{transactionId}")
+    public ResponseEntity<byte[]> downloadReceipt(@PathVariable String transactionId) throws IOException {
 
+        byte[] pdf = null;
+        Optional<Transaction> optTrans = transactionRepository.findByTransactionId(transactionId);
+        if(optTrans.isPresent()){
+            Transaction tx = optTrans.get();
+            pdf = pdfService.generateReceipt(tx);
+             System.out.println("found");
+        } else {
+            //testing
+            pdf = pdfService.generateReceiptTest();
+             System.out.println("not found");
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=receipt.pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
+
+    @Operation(summary = "", description = "")
+    @GetMapping("/receipt/view/pdf/{transactionId}")
+    public ResponseEntity<byte[]> viewReceipt(@PathVariable String transactionId) throws IOException {
+
+        byte[] pdf = null;
+        Optional<Transaction> optTrans = transactionRepository.findByTransactionId(transactionId);
+        if(optTrans.isPresent()){
+            Transaction tx = optTrans.get();
+            pdf = pdfService.generateReceipt(tx);
+             System.out.println("found");
+        } else {
+            //testing
+            pdf = pdfService.generateReceiptTest();
+             System.out.println("not found");
+        }
+
+        //TODO: FE PART -> window.open(`/api/transactions/download/receipt/pdf/${id}`, "_blank");
+        // OR <iframe src="/api/transactions/download/receipt/pdf/123" width="100%" height="600px"></iframe>
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=receipt.pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
     
 }

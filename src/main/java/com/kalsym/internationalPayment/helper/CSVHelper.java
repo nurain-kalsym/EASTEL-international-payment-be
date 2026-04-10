@@ -26,20 +26,16 @@ public class CSVHelper {
 
     public static String TYPE = "text/csv";
     static String[] NEWHEADERs = { "WSP Product Code", "Variant Name", "Variant Type", "Price", "Deno",
-            "Status", "OzoPay Method", "HelloSIM Method", "MM Wallet Method", "Referral Service ID",
-            "Loyalty Service ID", "Risky Product" };
+            "Status", "OzoPay Method", "HelloSIM Method", "MM Wallet Method"};
     static String[] UPDATEDHEADERs = { "Variant Id", "WSP Product Code", "Variant Name", "Variant Type", "Price",
-            "Deno", "Status", "OzoPay Method", "HelloSIM Method", "MM Wallet Method", "Referral Service ID",
-            "Loyalty Service ID", "Risky Product" };
+            "Deno", "Status", "OzoPay Method", "HelloSIM Method", "MM Wallet Method" };
 
     static String[] VOUCHERNEWHEADERs = { "WSP Product Code", "Variant Name", "Category", "Variant Type", "Price",
             "Deno",
-            "Status", "OzoPay Method", "HelloSIM Method", "MM Wallet Method", "Referral Service ID",
-            "Loyalty Service ID", "Risky Product" };
+            "Status", "OzoPay Method", "HelloSIM Method", "MM Wallet Method" };
     static String[] VOUCHERUPDATEDHEADERs = { "Variant Id", "WSP Product Code", "Variant Name", "Category",
             "Variant Type", "Price",
-            "Deno", "Status", "OzoPay Method", "HelloSIM Method", "MM Wallet Method", "Referral Service ID",
-            "Loyalty Service ID", "Risky Product" };
+            "Deno", "Status", "OzoPay Method", "HelloSIM Method", "MM Wallet Method" };
 
     static String SHEET = "Book1";
 
@@ -88,8 +84,6 @@ public class CSVHelper {
             }
 
             ProductVariant productVariant = new ProductVariant();
-            String loyServiceId = "null";
-            String refServiceId = "null";
 
             try {
                 for (int cellIdx = 0; cellIdx < values.length; cellIdx++) {
@@ -197,25 +191,6 @@ public class CSVHelper {
                             }
                             productVariant.setMmWalletMethod(parseBooleanValue(currentValue));
                             break;
-
-                        case 9:
-                            if (!currentValue.isEmpty()) {
-                                refServiceId = currentValue;
-                            }
-                            break;
-
-                        case 10:
-                            if (!currentValue.isEmpty()) {
-                                loyServiceId = currentValue;
-                            }
-                            break;
-                        case 11:
-                            if (currentValue.isEmpty()) {
-                                throw new IllegalArgumentException("Risky Product Field Is Missing.");
-                            }
-                            
-                            productVariant.setIsRisky(parseBooleanValue(currentValue));
-                            break;
                       
                         default:
                             break;
@@ -225,12 +200,6 @@ public class CSVHelper {
             } catch (IllegalArgumentException ex) {
                 throw new IllegalArgumentException("Error processing field at row " + (rowNumber + 1)
                         + ". Cause: " + ex.getMessage());
-            }
-
-            String serviceId = null;
-            if (refServiceId != "null" || loyServiceId != "null") {
-                serviceId = "ref:" + refServiceId + ";" + "loy:" + loyServiceId + ";";
-                productVariant.setServiceId(serviceId);
             }
 
             productVariants.add(productVariant);
@@ -265,8 +234,6 @@ public class CSVHelper {
             }
 
             ProductVariant productVariant = new ProductVariant();
-            String loyServiceId = "null";
-            String refServiceId = "null";
 
             try {
                 for (int cellIdx = 0; cellIdx < values.length; cellIdx++) {
@@ -385,26 +352,6 @@ public class CSVHelper {
                             productVariant.setMmWalletMethod(parseBooleanValue(currentValue));
                             break;
 
-                        case 10:
-                            if (!currentValue.isEmpty()) {
-                                refServiceId = currentValue;
-                            }
-                            break;
-
-                        case 11:
-                            if (!currentValue.isEmpty()) {
-                                loyServiceId = currentValue;
-                            }
-                            break;
-
-                        case 12:
-                            if (currentValue.isEmpty()) {
-                                throw new IllegalArgumentException("Risky Product Field Is Missing.");
-                            }
-
-                            productVariant.setIsRisky(parseBooleanValue(currentValue));
-                            break;
-
                         default:
                             break;
                     }
@@ -414,12 +361,6 @@ public class CSVHelper {
             } catch (IllegalArgumentException ex) {
                 throw new IllegalArgumentException("Error processing field at row " + (rowNumber + 1)
                         + ". Cause: " + ex.getMessage());
-            }
-
-            String serviceId = null;
-            if (!"null".equals(refServiceId) || !"null".equals(loyServiceId)) {
-                serviceId = "ref:" + refServiceId + ";" + "loy:" + loyServiceId + ";";
-                productVariant.setServiceId(serviceId);
             }
 
             productVariants.add(productVariant);
@@ -453,8 +394,6 @@ public class CSVHelper {
             }
 
             ProductVariant productVariant = new ProductVariant();
-            String loyServiceId = "null";
-            String refServiceId = "null";
 
             try {
                 for (int cellIdx = 0; cellIdx < values.length; cellIdx++) {
@@ -588,18 +527,6 @@ public class CSVHelper {
                             productVariant.setMmWalletMethod(parseBooleanValue(currentValue));
                             break;
 
-                        case 10:
-                            if (!currentValue.isEmpty()) {
-                                refServiceId = currentValue;
-                            }
-                            break;
-
-                        case 11:
-                            if (!currentValue.isEmpty()) {
-                                loyServiceId = currentValue;
-                            }
-                            break;
-
                         default:
                             break;
                     }
@@ -608,12 +535,6 @@ public class CSVHelper {
             } catch (IllegalArgumentException ex) {
                 throw new IllegalArgumentException("Error processing field at row " + (rowNumber + 1)
                         + ". Cause: " + ex.getMessage());
-            }
-
-            String serviceId = null;
-            if (refServiceId != "null" || loyServiceId != "null") {
-                serviceId = "ref:" + refServiceId + ";" + "loy:" + loyServiceId + ";";
-                productVariant.setServiceId(serviceId);
             }
 
             productVariants.add(productVariant);
@@ -648,8 +569,6 @@ public class CSVHelper {
             }
 
             ProductVariant productVariant = new ProductVariant();
-            String loyServiceId = "null";
-            String refServiceId = "null";
 
             try {
                 for (int cellIdx = 0; cellIdx < values.length; cellIdx++) {
@@ -794,18 +713,6 @@ public class CSVHelper {
                             productVariant.setMmWalletMethod(parseBooleanValue(currentValue));
                             break;
 
-                        case 11:
-                            if (!currentValue.isEmpty()) {
-                                refServiceId = currentValue;
-                            }
-                            break;
-
-                        case 12:
-                            if (!currentValue.isEmpty()) {
-                                loyServiceId = currentValue;
-                            }
-                            break;
-
                         default:
                             break;
                     }
@@ -814,12 +721,6 @@ public class CSVHelper {
             } catch (IllegalArgumentException ex) {
                 throw new IllegalArgumentException("Error processing field at row " + (rowNumber + 1)
                         + ". Cause: " + ex.getMessage());
-            }
-
-            String serviceId = null;
-            if (refServiceId != "null" || loyServiceId != "null") {
-                serviceId = "ref:" + refServiceId + ";" + "loy:" + loyServiceId + ";";
-                productVariant.setServiceId(serviceId);
             }
 
             productVariants.add(productVariant);

@@ -15,4 +15,5 @@ public class ChangePasswordRequest {
     private String newPassword;
     private String confirmNewPassword;
     private String msisdn;
+    private Boolean isFirstLogin;
 }

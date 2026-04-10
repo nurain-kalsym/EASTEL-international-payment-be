@@ -68,10 +68,6 @@ public class ProductVariant {
 
     private String planId;
 
-    private String serviceId;
-
-    private Boolean isRisky;
-
     private Double fixFee;
 
     public static ProductVariant castReference(ProductVariantRequest req) {
@@ -102,9 +98,6 @@ public class ProductVariant {
         body.setHellosimMethod(req.getHellosimMethod());
         body.setMmWalletMethod(req.getMmWalletMethod());
 
-        body.setServiceId(req.getServiceId());
-        body.setIsRisky(req.getIsRisky());
-
         body.setFixFee(req.getFixFee());
 
         return body;
@@ -134,8 +127,6 @@ public class ProductVariant {
         hellosimMethod = reqBody.getHellosimMethod();
         mmWalletMethod = reqBody.getMmWalletMethod();
 
-        serviceId = reqBody.getServiceId();
-        isRisky = reqBody.getIsRisky();
         fixFee = reqBody.getFixFee();
     }
 

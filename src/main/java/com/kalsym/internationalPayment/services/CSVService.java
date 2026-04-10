@@ -28,7 +28,7 @@ public class CSVService {
 
     public List<ProductVariant> convertToList(MultipartFile file, String type) {
         try {
-            if (type.equalsIgnoreCase("voucher")) {
+            if ("voucher".equalsIgnoreCase(type)) {
                 return csvHelper.csvToProductVariantVoucher(file.getInputStream());
             } else {
                 return csvHelper.csvToProductVariant(file.getInputStream());

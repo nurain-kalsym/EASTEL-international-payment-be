@@ -135,11 +135,11 @@ public class DashboardController {
         Optional<Transaction> optionalTransaction = transactionRepository.findByTransactionId(transactionId);
 
         if (!optionalTransaction.isPresent()) {
-            Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+            Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
                     "Transaction not found with id: " + transactionId);
 
             HttpHeaders responseHeaders = new HttpHeaders();
-            responseHeaders.add("Content-Disposition", "inline; filename=" + transactionId + ".pdf");
+            responseHeaders.add("Content-Disposition", "attachment; filename=" + transactionId + ".pdf");
 
             return ResponseEntity
                     .ok()
@@ -161,7 +161,7 @@ public class DashboardController {
         ByteArrayInputStream resource = new ByteArrayInputStream(pdfBytes);
 
         HttpHeaders responseHeaders = new HttpHeaders();
-        responseHeaders.add("Content-Disposition", "inline; filename=" + transaction.getTransactionId() + ".pdf");
+        responseHeaders.add("Content-Disposition", "attachment; filename=" + transaction.getTransactionId() + ".pdf");
 
         return ResponseEntity
                 .ok()

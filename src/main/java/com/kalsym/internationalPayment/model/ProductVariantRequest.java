@@ -45,9 +45,6 @@ public class ProductVariantRequest {
     private Boolean ozoPayMethod;
     private Boolean hellosimMethod;
     private Boolean mmWalletMethod;
-
-    private String serviceId;
-    private Boolean isRisky;
     
     private Double fixFee;
 }

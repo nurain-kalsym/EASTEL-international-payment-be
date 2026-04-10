@@ -96,7 +96,7 @@ public class ImageAssetsController {
     }
 
     @Operation(summary = "Add new image", description = "Admin can create save image in file server")
-    @PostMapping(path = { "/image-asset" })
+    @PostMapping(value = "/image-asset", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<HttpResponse> postAssetImage(
             HttpServletRequest request,
             @RequestParam ImageType imageType,
