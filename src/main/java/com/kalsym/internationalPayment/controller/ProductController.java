@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import com.kalsym.internationalPayment.InternationalPaymentApplication;
 import com.kalsym.internationalPayment.model.*;
 import com.kalsym.internationalPayment.model.categoryTree.TreeNode;
+import com.kalsym.internationalPayment.model.dao.CategoryGroup;
 import com.kalsym.internationalPayment.model.dao.MtradePaymentResponse;
 import com.kalsym.internationalPayment.model.enums.Status;
 import com.kalsym.internationalPayment.model.enums.VariantType;
@@ -302,32 +303,23 @@ public class ProductController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
-    @Operation(summary = "Get all product category", description = "To get the product category. If you want to get the subcategory pass query param parent category id. If you want to get a list of parent categories, just send a null value for the query param parentCategoryId")
+    @Operation(summary = "Get all product category", description = "To get the product category")
     @GetMapping("/all-category")
-    public ResponseEntity<HttpResponse> getProductCategory(HttpServletRequest request,
-            @RequestParam(required = false) Integer parentCategoryId,
-            @RequestParam(required = false) String countryCode) {
+    public ResponseEntity<HttpResponse> getProductCategory(HttpServletRequest request) {
 
         String logprefix = "getProductCategory";
         HttpResponse response = new HttpResponse(request.getRequestURI());
 
         try {
-            List<ProductCategory> categories;
+            List<ProductCategory> categories = productCategoryService.getAllCategories();
 
-            if (countryCode != null) {
-                // Get filtered categories by country code and parent category (if provided)
-                categories = productRepository.findActiveCategoriesByCountryCodeAndParentCategory(Status.ACTIVE,
-                        countryCode, parentCategoryId);
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "Filtering by country code: " + countryCode);
-            } else {
-                // Get categories without filtering
-                categories = productCategoryService.getProductCategory(parentCategoryId);
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                        "No country code filtering applied.");
-            }
+            List<CategoryGroup> result = categories.stream()
+                                        .collect(Collectors.groupingBy(ProductCategory::getSection))
+                                        .entrySet().stream()
+                                        .map(e -> new CategoryGroup(e.getKey(), e.getValue()))
+                                        .collect(Collectors.toList());
 
-            response.setData(categories);
+            response.setData(result);
             response.setStatus(HttpStatus.OK);
 
         } catch (Exception e) {

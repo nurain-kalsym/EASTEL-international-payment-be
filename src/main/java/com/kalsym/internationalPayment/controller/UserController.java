@@ -359,7 +359,7 @@ public class UserController {
         @PutMapping(path = { "/{id}/change-language" })
         public ResponseEntity<HttpResponse> changeLanguageProfile(HttpServletRequest request,
                 @PathVariable String id,
-                @RequestBody ChangeNationality reqBody) {
+                @RequestBody ChangeLanguage reqBody) {
                 HttpResponse response = new HttpResponse(request.getRequestURI());
                 String logprefix = "changeLanguageProfile";
 
@@ -377,21 +377,16 @@ public class UserController {
                         boolean isUpdateRequired = false;
 
                         if (reqBody.getLanguage() != null) {
-                        userData.setLanguage(reqBody.getLanguage());
-                        isUpdateRequired = true;
-                        }
-
-                        if (reqBody.getNationality() != null) {
-                        userData.setNationality(reqBody.getNationality());
-                        isUpdateRequired = true;
+                                userData.setLanguage(reqBody.getLanguage());
+                                isUpdateRequired = true;
                         }
 
                         if (!isUpdateRequired) {
-                        response.setStatus(HttpStatus.BAD_REQUEST);
-                        response.setError("Invalid Payload: No valid fields to update");
-                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
-                                "Invalid Payload: " + reqBody);
-                        return ResponseEntity.status(response.getStatus()).body(response);
+                                response.setStatus(HttpStatus.BAD_REQUEST);
+                                response.setError("Invalid Payload: No valid fields to update");
+                                Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                                        "Invalid Payload: " + reqBody);
+                                return ResponseEntity.status(response.getStatus()).body(response);
                         }
 
                         User savedData = userService.userProfileUpdate(userData);

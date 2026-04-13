@@ -35,12 +35,6 @@ public interface ProductRepository extends JpaRepository<Product, Integer>, JpaS
     List<String> findDistinctCategoriesByCountryCodeAndStatus(@Param("countryCode") String countryCode,
             @Param("status") Status status);
 
-    // Query to find categories that have active products for a specific country
-    // code
-    @Query("SELECT DISTINCT p.productCategoryDetails FROM Product p WHERE p.status = :status AND p.countryCode = :countryCode AND (:parentCategoryId IS NULL OR p.productCategoryDetails.parentCategoryId = :parentCategoryId)")
-    List<ProductCategory> findActiveCategoriesByCountryCodeAndParentCategory(@Param("status") Status status,
-            @Param("countryCode") String countryCode, @Param("parentCategoryId") Integer parentCategoryId);
-
     @Query("SELECT COUNT(DISTINCT p.id) AS product_count " +
             "FROM Product p " +
             "LEFT JOIN p.productVariant pv " +

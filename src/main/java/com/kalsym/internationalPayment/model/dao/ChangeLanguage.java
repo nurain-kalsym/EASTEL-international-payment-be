@@ -7,9 +7,7 @@ import lombok.ToString;
 @ToString
 @Getter
 @Setter
-public class ChangeNationality {
-    
-	private String nationality;
+public class ChangeLanguage {
 	private String language;
 
 }

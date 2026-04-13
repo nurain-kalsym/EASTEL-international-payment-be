@@ -19,4 +19,7 @@ public interface ProductCategoryRepository extends JpaRepository<ProductCategory
 
     List<ProductCategory> findByParentCategoryId(Integer parentCategoryId);
 
+    @Query("SELECT pc FROM ProductCategory pc WHERE pc.status = true")
+    List<ProductCategory> findAllActiveCategory();
+
 }

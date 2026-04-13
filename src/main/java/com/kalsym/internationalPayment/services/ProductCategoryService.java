@@ -31,25 +31,12 @@ public class ProductCategoryService {
         return productCategoryRepository.save(productCategoryBody);
     }
 
-    public List<ProductCategory> getProductCategory(Integer parentCategoryId) {
-
-        ProductCategory productCategoryMatch = new ProductCategory();
-        productCategoryMatch.setParentCategoryId(parentCategoryId);
-
-        ExampleMatcher matcher = ExampleMatcher
-                .matchingAll()
-                .withIgnoreCase()
-                .withMatcher("parentCategoryId", new GenericPropertyMatcher().exact())
-                .withIncludeNullValues()
-                .withIgnorePaths("category", "id", "parentCategory", "status");
-
-        Example<ProductCategory> example = Example.of(productCategoryMatch, matcher);
-
-        List<ProductCategory> data = productCategoryRepository.findAll(example);
-        return data;
-    }
-
     public Optional<ProductCategory> getProductCategoryId(Integer id) {
         return productCategoryRepository.findById(id);
+    }
+
+    public List<ProductCategory> getAllCategories() {
+        List<ProductCategory> data = productCategoryRepository.findAllActiveCategory();
+        return data;
     }
 }

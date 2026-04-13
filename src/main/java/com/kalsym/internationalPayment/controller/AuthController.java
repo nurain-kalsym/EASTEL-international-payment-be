@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +24,7 @@ import com.kalsym.internationalPayment.model.LoginRequest;
 import com.kalsym.internationalPayment.model.MySQLUserDetails;
 import com.kalsym.internationalPayment.model.OTPRequest;
 import com.kalsym.internationalPayment.model.RequestBodyData;
+import com.kalsym.internationalPayment.model.ResetPasswordRequest;
 import com.kalsym.internationalPayment.model.User;
 import com.kalsym.internationalPayment.model.VerificationCode;
 import com.kalsym.internationalPayment.model.enums.UserStatus;
@@ -58,6 +60,9 @@ public class AuthController {
 
         @Autowired
         OtpService otpService;
+
+        @Autowired
+        private PasswordEncoder passwordEncoder;
 
         /**
          * ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -217,49 +222,65 @@ public class AuthController {
                         .body(jwtBody);
         }
 
-        /* @Operation(summary = "", description = "")
-        @PostMapping(path = "/login-oauth") //❓
-        public ResponseEntity<?> loginOauth(@RequestBody ValidateOauthRequest body,
-                HttpServletRequest request) throws Exception {
-                String logprefix = "login-oauth";
-                String userEmail = "";
+        
+        @Operation(summary = "Forgot password", description = "To reset/forgot password")
+        @PostMapping("/forgot-password/reset")
+        public ResponseEntity<?> forgotPassword(HttpServletRequest request, @RequestBody ResetPasswordRequest reqBody) {
+                HttpResponse response = new HttpResponse(request.getRequestURI());
+                String logprefix = "forgotPassword";
 
-                Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix, "body : ", body);
+                Optional<User> userOpt = userService.findUserByEmail(reqBody.getEmail());
 
-                Optional<User> userOpt = userService.findUserByEmail(userEmail);
-
-                // if data not exist then we create the user
                 if (!userOpt.isPresent()) {
-
-                        User userData = new User();
-                        userData.setEmail(userEmail);
-                        userData.setFullName(body.getName());
-
-                        User saveData = userService.userSocialLoginRegistration(userData);
-
-                        String jwtToken = jwtUtils.getJwtToken(saveData);
-
-                        JwtBody jwtBody = new JwtBody();
-                        jwtBody.setJwt(jwtToken);
-
-                        return ResponseEntity.ok()
-                                .header("Authorization", "Bearer " + jwtToken)
-                                .body(jwtBody);
+                           response.setStatus(HttpStatus.NOT_FOUND, "User not found",
+                                Integer.toString(HttpStatus.NOT_FOUND.value()));
+                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                                "User with email : " + reqBody.getEmail() + " Not Found");
+                        return ResponseEntity.status(response.getStatus()).body(response);
                 }
 
-                // else we generate the token for user that has registered under google
-                String jwtToken = jwtUtils.getJwtToken(userOpt.get());
+                User userData = userOpt.get();
 
-                JwtBody jwtBody = new JwtBody();
-                jwtBody.setJwt(jwtToken);
+                // checking password reset qualification
+                if (!reqBody.getNewPassword().equals(reqBody.getConfirmNewPassword())) {
+                        response.setStatus(HttpStatus.EXPECTATION_FAILED, "The password confirmation do not match.",
+                                Integer.toString(HttpStatus.EXPECTATION_FAILED.value()));
+                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                                "The password confirmation do not match.");
+                        return ResponseEntity.status(response.getStatus()).body(response);
+                }
 
-                return ResponseEntity.ok()
-                        .header("Authorization", "Bearer " + jwtToken)
-                        .body(jwtBody);
-        } */
+                if (passwordEncoder.matches(reqBody.getNewPassword(), userData.getPassword())) {
+                        response.setStatus(HttpStatus.BAD_REQUEST,
+                                "New password cannot be the same as old password.");
+                        return ResponseEntity.status(response.getStatus()).body(response);
+                }
 
+                try {
+                        // allow user to reset
+                        userData.setPassword(reqBody.getNewPassword());
+                        User saveData = userService.userProfileResetPassword(userData);
+                        response.setData(saveData);
+                        response.setStatus(HttpStatus.OK, "Password reset is successful.");
 
-    
+                        Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                                "User email : " + reqBody.getEmail() + " password reset");
+
+                } catch (Exception e) {
+                        e.printStackTrace();
+                        System.err.println("e.getMessage()" + e.getMessage());
+                        response.setStatus(HttpStatus.EXPECTATION_FAILED, e.getMessage(),
+                                Integer.toString(HttpStatus.EXPECTATION_FAILED.value()));
+                        Logger.application.error(Logger.pattern, InternationalPaymentApplication.VERSION, logprefix,
+                                "Exception " + e.getMessage());
+                        return ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).body(response);
+                }
+
+                return ResponseEntity.status(response.getStatus()).body(response);
+
+                
+        }
+
         /**
          * ------------------------------------------------------------------------------------------------------------------------------------------------
          * OTP related endpoints
@@ -318,7 +339,7 @@ public class AuthController {
         }
 
         @Operation(summary = "Verify OTP", description = "To verify OTP")
-        @PostMapping("/confirm-verification-code") 
+        @PostMapping("/verify-otp") 
         public ResponseEntity<?> confirmVerificationCode(HttpServletRequest request,
             @RequestBody() OTPRequest OTPRequestBody) {
                 String logPrefix = "confirmVerificationCode";

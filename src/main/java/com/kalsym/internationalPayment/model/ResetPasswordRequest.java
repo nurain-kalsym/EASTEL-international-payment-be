@@ -10,9 +10,8 @@ import lombok.ToString;
 @NoArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @ToString
-public class ChangePasswordRequest {        
-    private String currentPassword;
+public class ResetPasswordRequest {   
     private String newPassword;
     private String confirmNewPassword;
-    private String msisdn;
+    private String email;
 }
