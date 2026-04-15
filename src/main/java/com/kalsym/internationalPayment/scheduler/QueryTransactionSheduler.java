@@ -24,7 +24,7 @@ import java.util.Date;
 import java.util.List;
 
 @Service
-@Profile({ "!dev" })
+@Profile("stg")
 public class QueryTransactionSheduler {
 
     @Autowired
@@ -41,6 +41,9 @@ public class QueryTransactionSheduler {
     
     @Autowired
     EmailService emailService;
+
+    @Value("${email.notification}")
+    private String emailNotify;
 
     @Scheduled(cron = "${pending-transaction:0 0/1 * * * ?}")
     public void queryPendingTransactions() {
@@ -154,10 +157,14 @@ public class QueryTransactionSheduler {
                 String formattedAmount = String.format("%.2f", transaction.getDenoAmount());
 
                 try {
-                    emailService.sendRefundEmail(transaction.getName(), transaction.getEmail(), formattedAmount, transaction.getTransactionId());
-                    transaction.setNotificationSent(true);
-                    Logger.application
-                            .info("Refund success send email to: " + transaction.getEmail());
+
+                    if ("true".equalsIgnoreCase(emailNotify)) {
+                        emailService.sendRefundEmail(transaction.getName(), transaction.getEmail(), formattedAmount, transaction.getTransactionId());
+                        transaction.setNotificationSent(true);
+                        Logger.application.info("Refund success send email to: " + transaction.getEmail());
+                    } else {
+                        Logger.application.info("Refund email notification is OFF");
+                    }
                 } catch (Exception e) {
                     transaction.setNotificationSent(false);
                     Logger.application

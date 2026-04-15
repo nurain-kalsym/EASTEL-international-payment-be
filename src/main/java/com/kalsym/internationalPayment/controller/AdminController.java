@@ -68,6 +68,9 @@ public class AdminController {
     @Value("${image.assets.location:eastel}")
     private String imageAssetPath;
 
+    @Value("${email.notification}")
+    private String emailNotify;
+
     @Autowired
     ImageAssetsRepository imageAssetsRepository;
 
@@ -1228,10 +1231,14 @@ public class AdminController {
                 try {
                     String formattedAmount = String.format("%.2f", transaction.getDenoAmount());
 
-                    emailService.sendRefundEmail(transaction.getName(), transaction.getEmail(), formattedAmount, transaction.getTransactionId());
-                    transaction.setNotificationSent(true);
+                    if ("true".equalsIgnoreCase(emailNotify)) {
+                        emailService.sendRefundEmail(transaction.getName(), transaction.getEmail(), formattedAmount, transaction.getTransactionId());
+                        transaction.setNotificationSent(true);
+                        Logger.application.info("Refund success send email to: " + transaction.getEmail());
+                    } else {
+                        Logger.application.info("Refund email notification is OFF");
+                    }
 
-                    Logger.application.info("Refund success send email to: " + transaction.getEmail());
                 } catch (Exception e) {
                     transaction.setNotificationSent(false);
                     Logger.application.error("Refund failed to send email to: " + transaction.getEmail()

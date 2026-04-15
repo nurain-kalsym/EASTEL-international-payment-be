@@ -31,9 +31,6 @@ public class EmailService {
 
         String body = buildOtpCodeEmailBody(otpCode, username);
 
-        //temp
-        receiverEmail = "nurain@kalsym.com";
-
         helper.setFrom("noreply-notify@eastel.my", "Eastel International Payment");
         helper.setTo(receiverEmail);
         helper.setSubject("Your OTP for Eastel Internation Payment");
@@ -67,9 +64,6 @@ public class EmailService {
                 StandardCharsets.UTF_8.name());
 
         String body = buildRefundEmailBody(username, amount, transactionId);
-
-        //temp
-        receiverEmail = "nurain@kalsym.com";
 
         helper.setFrom("noreply-notify@eastel.my", "Eastel International Payment");
         helper.setTo(receiverEmail);

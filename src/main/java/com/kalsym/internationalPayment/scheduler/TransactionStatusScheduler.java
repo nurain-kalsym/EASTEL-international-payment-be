@@ -15,7 +15,7 @@ import java.util.Date;
 import java.util.List;
 
 @Service
-@Profile({ "!dev" })
+@Profile("stg")
 public class TransactionStatusScheduler {
 
     @Autowired

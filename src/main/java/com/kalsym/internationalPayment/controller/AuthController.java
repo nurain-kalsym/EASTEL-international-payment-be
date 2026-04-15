@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -63,6 +64,9 @@ public class AuthController {
 
         @Autowired
         private PasswordEncoder passwordEncoder;
+
+        @Value("${email.notification}")
+        private String emailNotify;
 
         /**
          * ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -320,11 +324,17 @@ public class AuthController {
                                 return ResponseEntity.status(response.getStatus()).body(response);
                         }
                         
-                        // send otp to email
-                        emailService.sendOtpEmail(otpCode, user.getFullName(), user.getEmail());
+                        if ("true".equalsIgnoreCase(emailNotify)) {
+                                // send otp to email
+                                emailService.sendOtpEmail(otpCode, user.getFullName(), user.getEmail());
+                                Logger.application.info("OTP email sent to: " + user.getEmail());
+                        } else {
+                                Logger.application.info("OTP email notification is OFF");
+                        }
 
                         response.setStatus(HttpStatus.OK);
                         response.setMessage("OTP has been requested successfully.");
+                        response.setData(otpCode);
                         Logger.application.info(Logger.pattern, InternationalPaymentApplication.VERSION, logPrefix, "OTP sent for email: ",
                                 requestBodyData.getEmail());
 

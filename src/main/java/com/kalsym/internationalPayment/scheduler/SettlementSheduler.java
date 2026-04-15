@@ -25,7 +25,7 @@ import com.kalsym.internationalPayment.repositories.TransactionRepository;
 import com.kalsym.internationalPayment.utility.Logger;
 
 @Service
-@Profile({"!dev"})
+@Profile("stg")
 public class SettlementSheduler {
 
     @Autowired
