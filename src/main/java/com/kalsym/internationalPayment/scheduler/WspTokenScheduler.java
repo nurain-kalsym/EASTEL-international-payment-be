@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 @Service
-@Profile("!dev")
+@Profile("dev")
 public class WspTokenScheduler {
 
     private static final int MAX_RETRIES = 3;
