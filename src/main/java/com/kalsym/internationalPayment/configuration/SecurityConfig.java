@@ -9,52 +9,39 @@ import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.kalsym.internationalPayment.filter.SessionRequestFilter;
 import com.kalsym.internationalPayment.services.MySQLUserDetailsService;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.Arrays;
+import java.util.List;
 
 @Configuration
+@EnableWebSecurity
+@RequiredArgsConstructor
+@Slf4j
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
-    // @Autowired
-    // MySQLUserDetailsService userDetailsService;
-
-    // @Bean
-    // public AuthenticationProvider userDetailsAuthProvider() {
-    // DaoAuthenticationProvider a = new DaoAuthenticationProvider();
-    // a.setUserDetailsService(userDetailsService);
-    // a.setPasswordEncoder(encoder());
-    // return a;
-    // }
-
-    // @Bean
-    // public AuthenticationManager authenticationManager() {
-    // return new ProviderManager(userDetailsAuthProvider());
-    // }
-
     @Value("${allowed.origins}")
-    private String allowedOrigins;
+    private List<String> allowedOrigins;
 
     @Autowired
     private SessionAuthenticationEntryPoint unauthorizedHandler;
 
     @Autowired
     private SessionRequestFilter sessionRequestFilter;
-
-    @Bean
-    public PasswordEncoder encoder() {
-        return new BCryptPasswordEncoder();
-    }
 
     @Bean
     public AuthenticationManager authenticationManager(MySQLUserDetailsService userDetailsService,
@@ -68,60 +55,76 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(csrf -> csrf.disable())
-            .exceptionHandling(ex -> ex.authenticationEntryPoint(unauthorizedHandler))
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(
-                    //  "/**",
-                     "/auth/**",
-                    "/assets/**",
-                    "/error",
-                    "/v2/api-docs",
-                    "/swagger-resources",
-                    "/swagger-resources/**",
-                    "/configuration/ui",
-                    "/configuration/**",
-                    "/configuration/security",
-                    "/swagger-ui.html",
-                    "/session",
-                    "/webjars/**",
-                    "/swagger-ui/**",
-                    "/v3/api-docs/**"
-                ).permitAll()
-                .requestMatchers("/admin/**").hasAnyAuthority("ADMIN", "SUPERADMIN")
-                .anyRequest().authenticated()
-            )
-            .headers(headers -> headers
-                .defaultsDisabled()
-                .contentSecurityPolicy(csp -> csp
-                    .policyDirectives("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self';")
-                )
-                .frameOptions(frame -> frame.sameOrigin())
-            );
-
-        http.addFilterBefore(sessionRequestFilter, UsernamePasswordAuthenticationFilter.class);
-
-        return http.build();
+        return http
+                // Enable CORS using the corsConfigurationSource bean
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                // Disable CSRF
+                .csrf(crsf -> crsf.disable())
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                 "/auth/**",
+                                "/assets/**",
+                                "/error",
+                                "/v2/api-docs",
+                                "/swagger-resources",
+                                "/swagger-resources/**",
+                                "/configuration/ui",
+                                "/configuration/**",
+                                "/configuration/security",
+                                "/swagger-ui.html",
+                                "/session",
+                                "/webjars/**",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**")
+                        .permitAll()
+                        .anyRequest().authenticated())
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(unauthorizedHandler))
+                .addFilterBefore(sessionRequestFilter, UsernamePasswordAuthenticationFilter.class)
+                .build();
     }
 
-    // CORS configuration source for http.cors()
-    private UrlBasedCorsConfigurationSource corsConfigurationSource() {
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        // Set allowed origins
+        configuration.setAllowedOriginPatterns(allowedOrigins);
+
+        // When using credentials
+        configuration.setAllowCredentials(true);
+
+        // Allowed methods
+        configuration.setAllowedMethods(Arrays.asList(
+                "GET", "POST", "PUT", "DELETE", "OPTIONS"));
+
+        // Allowed headers
+        configuration.setAllowedHeaders(Arrays.asList(
+                "Authorization",
+                "Content-Type",
+                "X-Requested-With",
+                "Accept",
+                "Origin",
+                "Access-Control-Request-Method",
+                "Access-Control-Request-Headers",
+                "X-XSRF-TOKEN"));
+
+        // Exposed headers
+        configuration.setExposedHeaders(Arrays.asList(
+                "Access-Control-Allow-Origin",
+                "Access-Control-Allow-Credentials",
+                "Authorization"));
+
+        // Max age for preflight requests
+        configuration.setMaxAge(3600L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowCredentials(true);
-
-        String[] originsArray = allowedOrigins.split(",");
-        for (String origin : originsArray) {
-            config.addAllowedOrigin(origin.trim());
-        }
-
-        config.setAllowedHeaders(Arrays.asList("Authorization", "Session-Token", "Content-Type", "X-App-Token"));
-        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-
-        source.registerCorsConfiguration("/**", config);
+        source.registerCorsConfiguration("/**", configuration);
         return source;
     }
 }
