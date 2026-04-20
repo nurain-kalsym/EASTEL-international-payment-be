@@ -8,5 +8,4 @@ public enum TransactionEnum {
     BILLPREPAID,
     ORDER,
     COUPON
-
 }

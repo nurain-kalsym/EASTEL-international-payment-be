@@ -28,11 +28,13 @@ import com.kalsym.internationalPayment.model.RequestBodyData;
 import com.kalsym.internationalPayment.model.ResetPasswordRequest;
 import com.kalsym.internationalPayment.model.User;
 import com.kalsym.internationalPayment.model.VerificationCode;
+import com.kalsym.internationalPayment.model.Wallet;
 import com.kalsym.internationalPayment.model.enums.UserStatus;
 import com.kalsym.internationalPayment.repositories.UserRepository;
 import com.kalsym.internationalPayment.services.EmailService;
 import com.kalsym.internationalPayment.services.OtpService;
 import com.kalsym.internationalPayment.services.UserService;
+import com.kalsym.internationalPayment.services.WalletService;
 import com.kalsym.internationalPayment.utility.*;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -49,6 +51,9 @@ public class AuthController {
 
         @Autowired
         UserRepository userRepository;
+
+        @Autowired
+        WalletService walletService;
         
         @Autowired
         AuthenticationManager authenticationManager;
@@ -99,8 +104,19 @@ public class AuthController {
 
                                 User body = userService.userRegistration(userBody);
 
-                                response.setData(body);
-                                response.setStatus(HttpStatus.OK);
+                                if (body.getIsEnable() && "DEALER".equalsIgnoreCase(body.getRole())) {
+                                        Wallet wallet = walletService.createWallet(logprefix, body.getId());
+                                        if (wallet == null) {
+                                                response.setStatus(HttpStatus.EXPECTATION_FAILED, "Failed to create wallet for the user. Try again.");
+                                                userRepository.deleteById(body.getId()); //delete user if wallet cannot be created.
+                                        } else {
+                                                response.setData(body);
+                                                response.setStatus(HttpStatus.OK);
+                                        }
+                                } else {
+                                        response.setStatus(HttpStatus.EXPECTATION_FAILED, "User is not enabled or not a dealer." );
+                                }
+
 
                         } catch (DataIntegrityViolationException e) {
                                 e.printStackTrace();
@@ -226,7 +242,6 @@ public class AuthController {
                         .body(jwtBody);
         }
 
-        
         @Operation(summary = "Forgot password", description = "To reset/forgot password")
         @PostMapping("/forgot-password/reset")
         public ResponseEntity<?> forgotPassword(HttpServletRequest request, @RequestBody ResetPasswordRequest reqBody) {

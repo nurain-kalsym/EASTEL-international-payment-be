@@ -69,4 +69,7 @@ public class User {
     @JoinColumn(name = "imageId", referencedColumnName = "id", insertable = false, updatable = false)
     @NotFound(action = NotFoundAction.IGNORE)
     private ImageAssets imageDetails;
+
+    @Transient
+    private Wallet wallet;
 }

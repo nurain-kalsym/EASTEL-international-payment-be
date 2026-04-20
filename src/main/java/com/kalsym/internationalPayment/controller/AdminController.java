@@ -1,5 +1,6 @@
 package com.kalsym.internationalPayment.controller;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -935,6 +936,7 @@ public class AdminController {
 
     }
 
+    @Hidden
     @Operation(summary = "WSP create/update variant", description = "To create product variant by admin from pending customer rate plan (wsp db)")
     @PostMapping(path = {"/products/variants/wsp" }, produces = "application/json")
     public ResponseEntity<HttpResponse> createUpdateProductVariantByAdmin(
@@ -1171,6 +1173,7 @@ public class AdminController {
         };
     }
 
+    @Hidden
     @Operation(summary = "Refund transaction", description = "To refund transation status by transactionId")
     @PutMapping("/transactions/refund/{transactionId}")
     public ResponseEntity<HttpResponse> editTransactionStatus(HttpServletRequest request, @PathVariable String transactionId) {
@@ -1307,6 +1310,7 @@ public class AdminController {
 
     }
 
+    @Hidden
     @Operation(summary = "Get settlement by batch date", description = "Fetches paginated settlements filtered by batch date")
     @GetMapping("/settlement-by-batch-date")
     public ResponseEntity<HttpResponse> getSettlementByBatchDate(HttpServletRequest request,
@@ -1344,6 +1348,7 @@ public class AdminController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
+    @Hidden
     @Operation(summary = "Get summaries", description = "Fetches paginated summary records sorted by date.")
     @GetMapping("/summary")
     public ResponseEntity<HttpResponse> getAllSummary(HttpServletRequest request,

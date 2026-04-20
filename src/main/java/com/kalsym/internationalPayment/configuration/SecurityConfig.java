@@ -62,6 +62,7 @@ public class SecurityConfig {
                 .csrf(crsf -> crsf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
+                                //"/**",
                                  "/auth/**",
                                 "/assets/**",
                                 "/error",

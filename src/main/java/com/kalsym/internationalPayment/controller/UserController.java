@@ -6,9 +6,11 @@ import com.kalsym.internationalPayment.model.dao.*;
 import com.kalsym.internationalPayment.model.enums.ImageType;
 import com.kalsym.internationalPayment.model.enums.UserStatus;
 import com.kalsym.internationalPayment.repositories.UserRepository;
+import com.kalsym.internationalPayment.repositories.WalletRepository;
 import com.kalsym.internationalPayment.services.*;
 import com.kalsym.internationalPayment.utility.*;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,6 +60,9 @@ public class UserController {
         @Autowired
         private ImageAssetService imageAssetService;
 
+        @Autowired
+        private WalletRepository walletRepository;
+
     
         /**
          * ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -80,6 +85,11 @@ public class UserController {
                                 "path: " + user.getId());
 
                         User data = userService.userById(user.getId());
+                        Optional<Wallet> wallet = walletRepository.findByUserId(user.getId());
+                        if (wallet.isPresent()) {
+                                data.setWallet(wallet.get());
+                        }
+
                         response.setStatus(HttpStatus.OK);
                         response.setData(data);
 
@@ -180,6 +190,7 @@ public class UserController {
 
         }
 
+        @Hidden
         @Operation(summary = "Update user profile", description = "To update user profile. ie: fullname, nationality, email, etc")
         @PutMapping(path = { "/{id}/change-profile" })
         public ResponseEntity<HttpResponse> changeUserProfile(HttpServletRequest request,

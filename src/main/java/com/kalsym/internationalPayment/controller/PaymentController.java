@@ -13,6 +13,7 @@ import com.kalsym.internationalPayment.services.*;
 import com.kalsym.internationalPayment.utility.HttpResponse;
 import com.kalsym.internationalPayment.utility.Logger;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.Getter;
 import lombok.Setter;
@@ -36,6 +37,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/payments")
+@Hidden
 public class PaymentController {
 
     @Autowired

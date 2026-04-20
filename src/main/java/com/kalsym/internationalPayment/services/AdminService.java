@@ -18,7 +18,7 @@ public class AdminService {
     @Autowired
     JwtUtils jwtUtils;
 
-    @Value("${isLocal}")
+    @Value("${isLocal:false}")
     private String isLocal;
 
     public ResponseEntity<HttpResponse> filterRole(HttpServletRequest request, HttpResponse response){

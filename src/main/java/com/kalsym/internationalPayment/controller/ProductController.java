@@ -1,5 +1,6 @@
 package com.kalsym.internationalPayment.controller;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -151,6 +152,7 @@ public class ProductController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
+    @Hidden
     @Operation(summary = "Get all product by parent category", description = "To retrieve all products by parent category ID")
     @GetMapping("/all/parent-category")
     public ResponseEntity<HttpResponse> getAllProductsByParentCategoryId(HttpServletRequest request,
@@ -239,6 +241,7 @@ public class ProductController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
+    @Hidden
     @Operation(summary = "Get country by category ID", description = "To retrieve all information related to region country")
     @GetMapping("/country-by-category")
     public ResponseEntity<HttpResponse> getRegionCountry(HttpServletRequest request,
@@ -268,6 +271,7 @@ public class ProductController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
+    @Hidden
     @Operation(summary = "Get category by country", description = "To retrieve category by country code")
     @GetMapping("/category-by-country")
     public ResponseEntity<HttpResponse> getCategories(HttpServletRequest request,
@@ -375,6 +379,7 @@ public class ProductController {
      * --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
      */
 
+    @Hidden
     @Operation(summary = "Get count of incomplete products", description = "To retrieve counts of incomplete products: non-bill products (missing category or variant) and bill payment products (missing category, variant, or required fields)")
     @GetMapping("/incomplete-count")
     public ResponseEntity<HttpResponse> getIncompleteCount(HttpServletRequest request) {
@@ -394,6 +399,7 @@ public class ProductController {
         return ResponseEntity.status(response.getStatus()).body(response);
     }
 
+    @Hidden
     @Operation(summary = "Get phone operator", description = "To get product list by the phone number")
     @GetMapping("/operator/{mobileNo}/{countryCode}")
     public ResponseEntity<HttpResponse> getOperator(HttpServletRequest request,
@@ -450,6 +456,7 @@ public class ProductController {
         };
     }
 
+    @Hidden
     @Operation(summary = "Get all offices list", description = "To retrieve all office list based on productId")
     @GetMapping("/office-list")
     public ResponseEntity<HttpResponse> getOfficeListByProductId(HttpServletRequest request,
